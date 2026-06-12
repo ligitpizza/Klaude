@@ -150,6 +150,7 @@ function buildHelpEmbed() {
     .setFooter({ text: `Bot by ${getCreatorTag()} • Use --helpai for AI-specific commands` });
 }
 
+
 function buildHelpAIEmbed() {
   return new EmbedBuilder()
     .setColor("#282d2f")
