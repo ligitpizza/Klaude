@@ -61,21 +61,28 @@ function buildHelpEmbed() {
       },
       {
         // name: "\u200b", // invisible header — right column
-        name: "🛡️ Keyword Control",
+        name: "📸 Photo Tracker",
         value: [
-          "`-ton` Enable keyword control",
-          "`-toff` Disable keyword control",
-          "`-tstat` Show current status",
+          "`-mystat` Your photo upload stats",
+          "`-photostat @user` Stats for a specific user",
+          "`-toposter` Top photo contributors leaderboard",
+          "`-serverstat` Server-wide photo stats",
+          "`-channelstat` Current channel photo stats",
         ].join("\n"),
         inline: true,
       },
       // ── spacer row so next section starts on a new line ──────────────────────
       { name: "\u200b", value: "\u200b", inline: false },
       {
-        name: "🔍 Extractor",
+        name: "🛡️ Keyword Control",
         value: [
+          "`-ton` Enable keyword control",
+          "`-toff` Disable keyword control",
+          "`-tstat` Show current status",
+          " ",
+          "🔍 Extractor",
           "`--myid` Your user ID",
-          "`--userid @user` Get a user's ID",
+          // "`--userid @user` Get a user's ID",
           // "`--serverids` List all member IDs",
           // "`--userinfo @user` Detailed user info",
           // "`--track @user` Log tracking snapshot", 
@@ -91,17 +98,17 @@ function buildHelpEmbed() {
         ].join("\n"),
         inline: true,
       },
-      {
-        name: "📸 Photo Tracker",
-        value: [
-          "`-mystat` Your photo upload stats",
-          "`-photostat @user` Stats for a specific user",
-          "`-toposter` Top photo contributors leaderboard",
-          "`-serverstat` Server-wide photo stats",
-          "`-channelstat` Current channel photo stats",
-        ].join("\n"),
-        inline: true,
-      },
+      // {
+      //   name: "📸 Photo Tracker",
+      //   value: [
+      //     "`-mystat` Your photo upload stats",
+      //     "`-photostat @user` Stats for a specific user",
+      //     "`-toposter` Top photo contributors leaderboard",
+      //     "`-serverstat` Server-wide photo stats",
+      //     "`-channelstat` Current channel photo stats",
+      //   ].join("\n"),
+      //   inline: true,
+      // },
       // ── spacer ───────────────────────────────────────────────────────────────
       // { name: "\u200b", value: "\u200b", inline: false },
       // {
@@ -177,7 +184,7 @@ function buildHelpAIEmbed() {
       // ── spacer ───────────────────────────────────────────────────────────────
       { name: "\u200b", value: "\u200b", inline: false },
       {
-        name: "📋 Guidelines (Admin)",
+        name: "📋 Custom guidelines",
         value: [
           "`ai--g ls` List all guidelines",
           "`ai--g -s <id>` View a specific guideline",
