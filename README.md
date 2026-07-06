@@ -1,22 +1,9 @@
-![My Image Description](images/sample1.png)
 # Klaude (Rag-like Discord Bot)
 
 A multi-module Discord bot built with Discord.js v14, featuring AI chat with RAG-typeshi-like, music playback, photo tracking, keyword triggers, and server utilities.
 
 Hosted on **Render** (cloud). Active AI module uses **Upstash Redis** for conversation memory.
 
-<table>
-  <tr>
-    <td width="50%">
-      <img src="images/sample1.png" alt="Feature One View" width="100%">
-      <p align="center"><b>Feature One View</b></p>
-    </td>
-    <td width="50%">
-      <img src="images/sample1.png" alt="Feature Two View" width="100%">
-      <p align="center"><b>Feature Two View</b></p>
-    </td>
-  </tr>
-</table>
 ---
 
 ## Features
