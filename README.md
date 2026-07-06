@@ -1,4 +1,4 @@
-
+![My Image Description](images/sample1.png)
 # Discord Bot (Rag-like)
 
 A multi-module Discord bot built with Discord.js v14, featuring AI chat with RAG-typeshi-like, music playback, photo tracking, keyword triggers, and server utilities.
