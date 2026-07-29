@@ -1,7 +1,6 @@
 require("dotenv").config();
 const { EmbedBuilder } = require("discord.js");
 const { DisTube }      = require("distube");
-const { SpotifyPlugin }    = require("@distube/spotify");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
 const ffmpeg  = require("ffmpeg-static");
@@ -14,7 +13,7 @@ function initMusic(client) {
 
   distube = new DisTube(client, {
     ffmpeg: { path: ffmpeg },
-    plugins: [new SpotifyPlugin(), new SoundCloudPlugin()],
+    plugins: [new SoundCloudPlugin()],
   });
 
   distube.on("playSong", (queue, song) => {
