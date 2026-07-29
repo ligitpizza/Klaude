@@ -4,8 +4,9 @@ const { DisTube }      = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
 // ffmpeg-static's bundled binary segfaults on Render when reading SoundCloud's
-// HLS (.m3u8) streams — set FFMPEG_PATH to a system-installed ffmpeg to use that instead.
-const ffmpeg  = process.env.FFMPEG_PATH || require("ffmpeg-static");
+// HLS (.m3u8) streams, so we use @ffmpeg-installer/ffmpeg's binary instead.
+// FFMPEG_PATH still overrides both, e.g. to point at a system-installed ffmpeg.
+const ffmpeg  = process.env.FFMPEG_PATH || require("@ffmpeg-installer/ffmpeg").path;
 
 let distube;
 

@@ -2,7 +2,7 @@
   "name": "mythirdbot",
   "version": "1.0.0",
   "main": "index.js",
-  "engines":{
+  "engines": {
     "node": ">=20"
   },
   "scripts": {
@@ -21,6 +21,7 @@
     "@distube/spotify": "^2.0.2",
     "@distube/youtube": "^1.0.4",
     "@distube/ytdl-core": "^4.16.12",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/genai": "^1.38.0",
     "@snazzah/davey": "^0.1.8",
     "@upstash/redis": "^1.38.0",
