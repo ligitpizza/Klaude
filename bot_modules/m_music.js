@@ -3,7 +3,9 @@ const { EmbedBuilder } = require("discord.js");
 const { DisTube }      = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
-const ffmpeg  = require("ffmpeg-static");
+// ffmpeg-static's bundled binary segfaults on Render when reading SoundCloud's
+// HLS (.m3u8) streams — set FFMPEG_PATH to a system-installed ffmpeg to use that instead.
+const ffmpeg  = process.env.FFMPEG_PATH || require("ffmpeg-static");
 
 let distube;
 
