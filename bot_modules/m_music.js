@@ -184,7 +184,11 @@ async function handleMusicCommand(command, args, message) {
     }
 
     return message.channel.send({
-      embeds: [new EmbedBuilder().setColor("#282d2f").setTitle("Music Queue").setDescription(desc)].setFooter({ text: `Requested by **${userName}**` }),
+      embeds: [new EmbedBuilder()
+        .setColor("#282d2f")
+        .setTitle("Music Queue")
+        .setDescription(desc)
+        .setFooter({ text: `Requested by ${message.author.username}` })],
     });
   }
 
@@ -217,8 +221,7 @@ async function handleMusicCommand(command, args, message) {
           { name: "Requested by", value: song.user?.username ?? "Unknown",          inline: true },
           { name: "Volume",       value: `${queue.volume}%`,                        inline: true },
         )
-        .setThumbnail(song.thumbnail)]
-        .setFooter({ text: `Requested by **${userName}**` }),
+        .setThumbnail(song.thumbnail)],
     });
   }
 
