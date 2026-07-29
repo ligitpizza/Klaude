@@ -45,9 +45,6 @@
     "sqlite3": "^5.1.7",
     "yt-search": "^2.13.1"
   },
-  "devDependencies": {
-    "node": "^16.14.2"
-  },
   "description": "I have two repo for this discord ai\r 1 is for replit side, which kinda like a cloud ide.\r 2 is for vscode, which is locally.",
   "repository": {
     "type": "git",
