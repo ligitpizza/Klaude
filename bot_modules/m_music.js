@@ -72,6 +72,9 @@ function initMusic(client) {
   distube.on("disconnect", queue => queue.textChannel?.send("Disconnected from voice channel."));
   distube.on("empty",      queue => queue.textChannel?.send("Voice channel is empty. Leaving..."));
 
+  distube.on("debug",       message => console.log("[DisTube debug]", message));
+  distube.on("ffmpegDebug", message => console.log("[FFmpeg debug]", message));
+
   return distube;
 }
 
