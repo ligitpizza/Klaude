@@ -92,4 +92,6 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isCommand()) return;
 });
 
+client.on("error", (err) => console.error("Client error:", err));
+
 client.login(process.env.DISCORD_BOT_TOKEN_1);

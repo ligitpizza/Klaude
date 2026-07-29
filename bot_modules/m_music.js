@@ -125,8 +125,13 @@ async function handleMusicCommand(command, args, message) {
     if (queue) queue.stop();
     const voiceState = message.guild.members.me?.voice;
     if (!voiceState?.channel) return message.reply("I'm not in a voice channel!");
-    await voiceState.disconnect();
-    message.react("💔");
+    try {
+      await voiceState.disconnect();
+      message.react("💔");
+    } catch (err) {
+      console.error("Leave error:", err);
+      message.reply("I couldn't leave the voice channel — I might be missing the **Move Members** permission.");
+    }
     return;
   }
 
