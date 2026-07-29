@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+*.log
+logs
+data/tracking
+data/logs
+data/webhooks
+data/messages
+data/exports
