@@ -96,12 +96,14 @@ const MUSIC_HELP =
   "`-nowplaying` — Show current song info.\n" +
   "`-volume <0-100>` — Set volume.\n" +
   "`-leave` — Bot quit voice chat.\n" +
+  "`-search <query>` — Search SoundCloud and pick a track from a list.\n" +
   // "`-ask <question>` — Ask the AI assistant.\n" +
   "\n**Supported sources:** YouTube · Spotify · SoundCloud\n";
 
 const MUSIC_COMMANDS = new Set([
   "play", "p", "skip", "s", "stop", "pause", "resume",
   "queue", "q", "volume", "vol", "nowplaying", "np", "ask", "ai", "leave", "l",
+  "search", "se",
 ]);
 
 // ─── Command Handler ──────────────────────────────────────────────────────────
