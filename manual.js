@@ -56,6 +56,7 @@ function buildHelpEmbed() {
           "`-nowplaying` Show current song",
           "`-volume <0-100>` Set volume",
           "`-leave` Disconnect bot from voice",
+          "`-search <query>` Search SoundCloud and pick a track",
         ].join("\n"),
         inline: true,
       },
