@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require("discord.js");
 const { DisTube }      = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
@@ -9,14 +9,17 @@ const fetch   = require("node-fetch");
 const ffmpeg  = process.env.FFMPEG_PATH || require("@ffmpeg-installer/ffmpeg").path;
 
 let distube;
+let soundcloudPlugin;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function initMusic(client) {
   console.log("ffmpeg path:", ffmpeg);
 
+  soundcloudPlugin = new SoundCloudPlugin();
+
   distube = new DisTube(client, {
     ffmpeg: { path: ffmpeg },
-    plugins: [new SoundCloudPlugin()],
+    plugins: [soundcloudPlugin],
   });
 
   distube.on("playSong", (queue, song) => {
