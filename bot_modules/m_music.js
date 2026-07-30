@@ -130,6 +130,86 @@ async function handleMusicCommand(command, args, message) {
     return;
   }
 
+  // ── -search / -se ─────────────────────────────────────────────────────────
+  if (command === "search" || command === "se") {
+    if (!voiceChannel)  return message.reply("You need to be in a voice channel!");
+    if (!args.length)   return message.reply("Please provide a search query!");
+
+    const query = args.join(" ");
+    let results;
+    try {
+      results = await soundcloudPlugin.search(query, "track", 10);
+    } catch (err) {
+      console.error("Search error:", err);
+      return message.reply(`  ${err.message || "Could not search SoundCloud."}`);
+    }
+
+    if (!results.length) {
+      return message.reply(`No SoundCloud results for **${query}**.`);
+    }
+
+    const truncate = (str, max) => (str.length > max ? `${str.slice(0, max - 1)}…` : str);
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("soundcloud-search")
+      .setPlaceholder("Pick a track to queue")
+      .addOptions(results.map((song, i) => ({
+        label:       truncate(song.name, 100),
+        description: truncate(`${song.uploader?.name ?? "Unknown"} • ${song.formattedDuration}`, 100),
+        value:       String(i),
+      })));
+
+    const embed = new EmbedBuilder()
+      .setColor("#282d2f")
+      .setTitle(`SoundCloud results for "${query}"`)
+      .setDescription(
+        results.map((song, i) => `**${i + 1}.** ${song.name} — *${song.formattedDuration}*`).join("\n")
+      )
+      .setFooter({ text: "Pick a track from the dropdown below — expires in 30s" });
+
+    const sentMessage = await message.channel.send({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(menu)],
+    });
+
+    const collector = sentMessage.createMessageComponentCollector({ time: 30_000 });
+
+    collector.on("collect", async (interaction) => {
+      if (interaction.user.id !== message.author.id) {
+        return interaction.reply({ content: "This isn't your search!", flags: MessageFlags.Ephemeral });
+      }
+
+      const picked = results[Number(interaction.values[0])];
+      collector.stop("picked");
+
+      await interaction.update({
+        embeds: [embed],
+        components: [],
+        content: `Selected: **${picked.name}**`,
+      });
+
+      try {
+        await distube.play(voiceChannel, picked.url, {
+          member: message.member, textChannel: message.channel, message,
+        });
+      } catch (err) {
+        console.error("Search play error:", err);
+        message.channel.send(`  ${err.message || "Could not play that song."}`);
+      }
+    });
+
+    collector.on("end", (_collected, reason) => {
+      if (reason === "picked") return;
+      sentMessage.edit({
+        embeds: [embed],
+        components: [],
+        content: "Search expired — run `-search` again.",
+      }).catch(() => {});
+    });
+
+    return;
+  }
+
   // ── -leave ─────────────────────────────────────────────────────────────────
   if (command === "leave" || command === "l") {
     const queue = distube.getQueue(message.guildId);
