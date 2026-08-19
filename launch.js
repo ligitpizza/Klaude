@@ -1,4 +1,21 @@
 require("dotenv").config();
+
+// Log the source of any unhandled rejection instead of letting Node crash
+// with no context (this is what happened with the recent SSL handshake
+// failure — we need to know *which* outbound connection failed). Still
+// exits after logging — attaching a listener suppresses Node's default
+// crash behavior, and continuing to run after an unhandled rejection would
+// leave the bot in an unpredictable half-initialized state instead of
+// letting Render restart it cleanly.
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+  process.exit(1);
+});
+
 const { EmbedBuilder } = require('discord.js');
 const express = require("express");
 const app = express();
