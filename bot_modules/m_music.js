@@ -167,26 +167,37 @@ async function handleMusicCommand(command, args, message) {
       )
       .setFooter({ text: "Pick a track from the dropdown below — expires in 30s" });
 
-    const sentMessage = await message.channel.send({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(menu)],
-    });
+    let sentMessage;
+    try {
+      sentMessage = await message.channel.send({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(menu)],
+      });
+    } catch (err) {
+      console.error("Search send error:", err);
+      return message.reply("Could not display search results — please try again.").catch(() => {});
+    }
 
     const collector = sentMessage.createMessageComponentCollector({ time: 30_000 });
 
     collector.on("collect", async (interaction) => {
       if (interaction.user.id !== message.author.id) {
-        return interaction.reply({ content: "This isn't your search!", flags: MessageFlags.Ephemeral });
+        interaction.reply({ content: "This isn't your search!", flags: MessageFlags.Ephemeral }).catch(() => {});
+        return;
       }
 
       const picked = results[Number(interaction.values[0])];
       collector.stop("picked");
 
-      await interaction.update({
-        embeds: [embed],
-        components: [],
-        content: `Selected: **${picked.name}**`,
-      });
+      try {
+        await interaction.update({
+          embeds: [embed],
+          components: [],
+          content: `Selected: **${picked.name}**`,
+        });
+      } catch (err) {
+        console.error("Search update error:", err);
+      }
 
       try {
         await distube.play(voiceChannel, picked.url, {
@@ -194,7 +205,7 @@ async function handleMusicCommand(command, args, message) {
         });
       } catch (err) {
         console.error("Search play error:", err);
-        message.channel.send(`  ${err.message || "Could not play that song."}`);
+        message.channel.send(`  ${err.message || "Could not play that song."}`).catch(() => {});
       }
     });
 
