@@ -982,4 +982,4 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-client.login(process.env.DISCORD_BOT_TOKEN_1);
+client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("RAG quality login failed:", err));

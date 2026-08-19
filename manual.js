@@ -223,4 +223,4 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isCommand()) return;
 });
 
-client.login(process.env.DISCORD_BOT_TOKEN_1);
+client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Manual login failed:", err));

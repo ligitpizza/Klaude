@@ -178,4 +178,4 @@ client.on("messageCreate", async (message) => {
 });
 
 client.once("ready", () => console.log(`✅Logged in as ${client.user.tag}, Photos Up`));
-client.login(process.env.DISCORD_BOT_TOKEN_1);
+client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Photoloc login failed:", err));

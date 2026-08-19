@@ -242,5 +242,5 @@ client.on("messageCreate", message => {
   }
 })
 
-client.login(process.env.DISCORD_BOT_TOKEN_1);
+client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Moderator login failed:", err));
 // client.login(process.env.DISCORD_BOT_TOKEN_2);

@@ -111,4 +111,4 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on("error", (err) => console.error("Client error:", err));
 
-client.login(process.env.DISCORD_BOT_TOKEN_1);
+client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Main login failed:", err));
