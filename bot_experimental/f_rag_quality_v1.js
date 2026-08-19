@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const { LOADIPHLPAPI } = require("node:dns");
 const redis = require("../data/db/redis_client.js");
+const { withRetry } = require("../data/utils/retry.js");
 
 const client = new Client({
   intents: [
@@ -60,7 +61,7 @@ async function getConversationStats(userId) {
 // ── Channel context ───────────────────────────────────────────────────────────
 async function getChannelContext(channel, limit = 20) {
   try {
-    const messages = await channel.messages.fetch({ limit });
+    const messages = await withRetry(() => channel.messages.fetch({ limit }));
     const context = [...messages.values()]
       .reverse()
       .filter(m => !m.author.bot && m.content.length > 5)
@@ -499,14 +500,14 @@ const FREE_MODELS = [
 async function fetchFromAny(messages) {
   for (const model of FREE_MODELS) {
     console.log(`Trying model: ${model}`);
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    const response = await withRetry(() => fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.GOOGLE_API_KEY}`
       },
       body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1500 })
-    });
+    }));
 
     if (response.status === 429) { console.log(`Model ${model} rate limited, trying next...`); continue; }
     if (!response.ok) { const errText = await response.text(); console.error(`Model ${model} error ${response.status}:`, errText); continue; }
@@ -898,7 +899,7 @@ client.on("messageCreate", async (message) => {
     console.log(`Loaded ${conversationHistory.length} previous messages for ${userName}`);
 
     await message.channel.sendTyping();
-    const searchResults = await fetchSearchResults(userInput);
+    const searchResults = await withRetry(() => fetchSearchResults(userInput));
 
     if (searchResults) {
       console.log(`Search results injected (${searchResults.length} chars)`);
@@ -982,4 +983,5 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("RAG quality login failed:", err));
+withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
+  .catch(err => console.error("RAG quality login failed:", err));

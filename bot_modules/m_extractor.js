@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { withRetry } = require("../data/utils/retry.js");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fs = require("fs-extra");
 const moment = require("moment");
@@ -510,4 +511,5 @@ client.on("messageCreate", async msg => {
 // }
 });
 
-client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Extractor login failed:", err));
+withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
+  .catch(err => console.error("Extractor login failed:", err));

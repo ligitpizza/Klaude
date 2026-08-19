@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { withRetry } = require("./data/utils/retry.js");
 
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 
@@ -223,4 +224,5 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isCommand()) return;
 });
 
-client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Manual login failed:", err));
+withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
+  .catch(err => console.error("Manual login failed:", err));

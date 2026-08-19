@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { withRetry } = require("./data/utils/retry.js");
 
 // Log the source of any unhandled rejection instead of letting Node crash
 // with no context (this is what happened with the recent SSL handshake
@@ -111,4 +112,5 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on("error", (err) => console.error("Client error:", err));
 
-client.login(process.env.DISCORD_BOT_TOKEN_1).catch(err => console.error("Main login failed:", err));
+withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
+  .catch(err => console.error("Main login failed:", err));
