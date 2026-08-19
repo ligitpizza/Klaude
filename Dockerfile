@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:26-slim
 
 # ffmpeg: apt's build fixes the SIGSEGV we hit with prebuilt static ffmpeg
 # binaries (ffmpeg-static / @ffmpeg-installer) when demuxing SoundCloud's
