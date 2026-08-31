@@ -1,18 +1,10 @@
 //AI SECTION v3 — Gemini + NewsAPI + OMDB + RAWG + Tavily fallback
 require("dotenv").config();
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const { LOADIPHLPAPI } = require("node:dns");
 const redis = require("../data/db/redis_client.js");
 const { withRetry } = require("../data/utils/retry.js");
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
 
 let LOG_COUNTER = 0;
 
@@ -653,6 +645,8 @@ async function buildGuidelinesBlock() {
 
 
 
+function initRagQuality(client) {
+
 client.once("ready", () => {
   try {
     console.log(`✅Logged in as ${client.user.tag}, v3.1 (Redis + rate limit)`);
@@ -983,5 +977,6 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
-  .catch(err => console.error("RAG quality login failed:", err));
+}
+
+module.exports = { initRagQuality };

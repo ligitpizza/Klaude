@@ -1,16 +1,9 @@
 require("dotenv").config();
-const { withRetry } = require("../data/utils/retry.js");
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 const redis = require("../data/db/redis_client.js");
 const path = require("path");
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
+function initPhotoloc(client) {
 
 // ── Key helpers ───────────────────────────────────────────────────────────────
 const PHOTO_USER_KEY  = (userId, serverId)   => `photo:user:${serverId}:${userId}`;
@@ -179,5 +172,7 @@ client.on("messageCreate", async (message) => {
 });
 
 client.once("ready", () => console.log(`✅Logged in as ${client.user.tag}, Photos Up`));
-withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
-  .catch(err => console.error("Photoloc login failed:", err));
+
+}
+
+module.exports = { initPhotoloc };

@@ -39,26 +39,42 @@ const client = new Client({
 const PREFIX = "-"; // ← moved up so it's defined before use
 
 // ─── Modules ──────────────────────────────────────────────────────────────────
+// All modules below share this single client/token — each one used to spin up
+// its own Client and log in with the same DISCORD_BOT_TOKEN_1, which meant up
+// to 6 simultaneous gateway connections on one token fighting over Discord's
+// IDENTIFY rate limit at boot. Whichever client lost that race never reached
+// "ready" and silently never received any events (e.g. the AI module ignoring
+// every @mention). Everything that only needs this client's existing intents
+// now attaches its listeners directly to it instead of logging in separately.
 const { initMusic, handleMusicCommand, MUSIC_COMMANDS, MUSIC_HELP } = require("./bot_modules/m_music.js");
 const distube = initMusic(client);
 
-//modules
-require("./bot_modules/m_moderator.js");
+const { initModerator } = require("./bot_modules/m_moderator.js");
+const { initPhotoloc }  = require("./bot_modules/m_photoloc.js");
+const { initManual }    = require("./manual.js");
+const { initRagQuality } = require("./bot_experimental/f_rag_quality_v1.js");
+
+initModerator(client);
+initPhotoloc(client);
+initManual(client);
+initRagQuality(client);
+
+// m_extractor.js still runs as its own client — it needs privileged intents
+// (GuildMembers/GuildPresences) that may not be enabled for this application
+// in the Discord Developer Portal, so merging it into the shared client risks
+// taking the whole bot down if those aren't toggled on. Keeping it isolated
+// means only the extractor module is at risk, not everything else.
 require("./bot_modules/m_extractor.js");
 // require("./bot_modules/m_insomnia.js");
-require('./bot_modules/m_music.js');
-require('./bot_modules/m_photoloc.js');
 
 //experimental
 // require('./bot_experimental/f_rag_location_v1.js');
 // require('./bot_experimental/f_rag_efficient_v1.js');
-require('./bot_experimental/f_rag_quality_v1.js');
 
 //additional
 // require('./additional/a_insomnia_1.js');
 // require('./additional/a_insomnia_2.js');
 // require('./additional/a_insomnia_3.js');
-require('./manual.js');
 
 
 client.on("messageCreate", async (message) => {

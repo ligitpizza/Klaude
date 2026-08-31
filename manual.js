@@ -1,17 +1,7 @@
 require("dotenv").config();
-const { withRetry } = require("./data/utils/retry.js");
+const { EmbedBuilder } = require("discord.js");
 
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates,
-  ],
-});
-
+function initManual(client) {
 
 let creator;
 client.once("ready", async () => {
@@ -224,5 +214,6 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isCommand()) return;
 });
 
-withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
-  .catch(err => console.error("Manual login failed:", err));
+}
+
+module.exports = { initManual };
