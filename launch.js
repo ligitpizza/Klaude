@@ -2,6 +2,23 @@ require("dotenv").config();
 
 const { withTimeout } = require("./data/utils/timeout.js");
 
+// Diagnostic only — logs whether plain HTTPS to Discord's REST API works
+// from this container at all, before we even attempt gateway login. Tells
+// us if this is a general network block (both probes hang) vs something
+// specific to the gateway/WebSocket handshake (probes succeed fine).
+(async () => {
+  const targets = ["https://discord.com/api/v10/gateway", "https://discordapp.com/api/v10/gateway"];
+  for (const url of targets) {
+    const start = Date.now();
+    try {
+      const res = await withTimeout(fetch(url), 8000, `network probe ${url}`);
+      console.log(`NETWORK PROBE OK: ${url} -> HTTP ${res.status} in ${Date.now() - start}ms`);
+    } catch (err) {
+      console.error(`NETWORK PROBE FAILED: ${url} -> ${err.message} (${Date.now() - start}ms)`);
+    }
+  }
+})();
+
 // Log the source of any unhandled rejection instead of letting Node crash
 // with no context (this is what happened with the recent SSL handshake
 // failure — we need to know *which* outbound connection failed). Still
