@@ -1,13 +1,5 @@
 require("dotenv").config();
 
-// Node's default DNS resolution can prefer IPv6 first; on hosts where IPv6
-// egress is advertised but not actually routable, that first connection
-// attempt stalls until a long OS-level timeout before falling back to IPv4.
-// This has been the likely shared cause behind hangs we've seen across
-// completely unrelated outbound destinations (Redis, Tavily, SoundCloud,
-// and Discord's own login) — force IPv4 first, before anything else runs.
-require("node:dns").setDefaultResultOrder("ipv4first");
-
 const { withTimeout } = require("./data/utils/timeout.js");
 
 // Log the source of any unhandled rejection instead of letting Node crash
