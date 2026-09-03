@@ -1,3 +1,5 @@
+console.log("BUILD MARKER: launch.js v-probe2 starting");
+
 require("dotenv").config();
 
 const { withTimeout } = require("./data/utils/timeout.js");
@@ -6,10 +8,12 @@ const { withTimeout } = require("./data/utils/timeout.js");
 // from this container at all, before we even attempt gateway login. Tells
 // us if this is a general network block (both probes hang) vs something
 // specific to the gateway/WebSocket handshake (probes succeed fine).
+console.log("NETWORK PROBE: starting");
 (async () => {
   const targets = ["https://discord.com/api/v10/gateway", "https://discordapp.com/api/v10/gateway"];
   for (const url of targets) {
     const start = Date.now();
+    console.log(`NETWORK PROBE: requesting ${url}`);
     try {
       const res = await withTimeout(fetch(url), 8000, `network probe ${url}`);
       console.log(`NETWORK PROBE OK: ${url} -> HTTP ${res.status} in ${Date.now() - start}ms`);
@@ -17,7 +21,8 @@ const { withTimeout } = require("./data/utils/timeout.js");
       console.error(`NETWORK PROBE FAILED: ${url} -> ${err.message} (${Date.now() - start}ms)`);
     }
   }
-})();
+  console.log("NETWORK PROBE: done");
+})().catch(err => console.error("NETWORK PROBE: crashed", err));
 
 // Log the source of any unhandled rejection instead of letting Node crash
 // with no context (this is what happened with the recent SSL handshake
