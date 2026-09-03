@@ -2,7 +2,7 @@
 
 A multi-module Discord bot built with Discord.js v14, featuring AI chat with RAG-typeshi-like, music playback, photo tracking, keyword triggers, and server utilities.
 
-Hosted on **Render** (cloud). Active AI module uses **Upstash Redis** for conversation memory.
+Containerized with **Docker** and hosted on **Render** (cloud). Active AI module uses **Upstash Redis** for conversation memory.
 
 ---
 
@@ -252,11 +252,20 @@ User @mentions bot
 
 ## Deployment
 
-This bot is hosted on **Render** (cloud service).
+This bot runs in a **Docker container** and is hosted on **Render** (cloud service).
 
-- Entry point: `node launch.js`
+- Base image: `node:26-slim`
+- Container installs `ffmpeg`, `python3`, `make`, `g++` for audio processing and native module builds (see [Dockerfile](Dockerfile))
+- Entry point: `node launch.js` (via `CMD` in the Dockerfile)
 - Port: `3001` (VS Code/Render version)
 - Keep-alive: Express server on `/` responds with `"wes is running!"`
+
+To build and run the container locally:
+
+```bash
+docker build -t rag-like-discord-bot .
+docker run --env-file .env -p 3001:3001 rag-like-discord-bot
+```
 
 > The Replit version uses port `3000`. Do not mix the two. (not working anymore)
 
