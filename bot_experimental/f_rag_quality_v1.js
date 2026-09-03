@@ -727,7 +727,8 @@ client.on("messageCreate", async (message) => {
     // Optional: restrict to specific user IDs
     // const ALLOWED = ['YOUR_DISCORD_USER_ID'];
     // if (!ALLOWED.includes(userId)) return await message.reply('Not authorized.');
- 
+
+   try {
     const args = message.content.slice('ai--g'.length).trim();
     const [subcommand, ...rest] = args.split(/\s+/);
     const sub = subcommand?.toLowerCase();
@@ -860,8 +861,17 @@ client.on("messageCreate", async (message) => {
           },
         )],
     });
+   } catch (err) {
+     console.error("Guideline command error:", err);
+     return await message.reply({
+       embeds: [new EmbedBuilder()
+         .setColor("#282d2f")
+         .setTitle("Error")
+         .setDescription("Failed to process guideline command. Try again later.")],
+     });
+   }
   }
- 
+
 // ─────────────────────────────────────────────────────────────────────────────
  
 
