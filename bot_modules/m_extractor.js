@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { withRetry } = require("../data/utils/retry.js");
+const { withTimeout } = require("../data/utils/timeout.js");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fs = require("fs-extra");
 const moment = require("moment");
@@ -511,5 +511,23 @@ client.on("messageCreate", async msg => {
 // }
 });
 
-withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
-  .catch(err => console.error("Extractor login failed:", err));
+// See launch.js's loginWithTimeout for why this can't just be withRetry:
+// a stalled gateway handshake hangs the login() promise rather than
+// rejecting it, so retrying on rejection alone never kicks in.
+const LOGIN_TIMEOUT_MS = 20000;
+const MAX_LOGIN_ATTEMPTS = 5;
+
+async function loginWithTimeout() {
+  for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
+    try {
+      await withTimeout(client.login(process.env.DISCORD_BOT_TOKEN_1), LOGIN_TIMEOUT_MS, "Discord login (extractor)");
+      return;
+    } catch (err) {
+      console.error(`Extractor login attempt ${attempt}/${MAX_LOGIN_ATTEMPTS} failed:`, err.message);
+      if (attempt === MAX_LOGIN_ATTEMPTS) throw err;
+      try { await client.destroy(); } catch {}
+    }
+  }
+}
+
+loginWithTimeout().catch(err => console.error("Extractor login failed after all retries:", err));

@@ -1,5 +1,14 @@
 require("dotenv").config();
-const { withRetry } = require("./data/utils/retry.js");
+
+// Node's default DNS resolution can prefer IPv6 first; on hosts where IPv6
+// egress is advertised but not actually routable, that first connection
+// attempt stalls until a long OS-level timeout before falling back to IPv4.
+// This has been the likely shared cause behind hangs we've seen across
+// completely unrelated outbound destinations (Redis, Tavily, SoundCloud,
+// and Discord's own login) — force IPv4 first, before anything else runs.
+require("node:dns").setDefaultResultOrder("ipv4first");
+
+const { withTimeout } = require("./data/utils/timeout.js");
 
 // Log the source of any unhandled rejection instead of letting Node crash
 // with no context (this is what happened with the recent SSL handshake
@@ -128,5 +137,33 @@ client.on("interactionCreate", async (interaction) => {
 
 client.on("error", (err) => console.error("Client error:", err));
 
-withRetry(() => client.login(process.env.DISCORD_BOT_TOKEN_1))
-  .catch(err => console.error("Main login failed:", err));
+// client.login() can stall indefinitely (rather than reject) if the gateway
+// handshake stalls on a bad connection, which withRetry alone can't recover
+// from since it only retries on a caught rejection. Bound each attempt with
+// a timeout and force a clean retry (destroying the client's half-open
+// connection state first) instead of leaving the bot stuck offline forever.
+const LOGIN_TIMEOUT_MS = 20000;
+const MAX_LOGIN_ATTEMPTS = 5;
+
+async function loginWithTimeout() {
+  for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
+    try {
+      await withTimeout(client.login(process.env.DISCORD_BOT_TOKEN_1), LOGIN_TIMEOUT_MS, "Discord login");
+      return;
+    } catch (err) {
+      console.error(`Login attempt ${attempt}/${MAX_LOGIN_ATTEMPTS} failed:`, err.message);
+      if (attempt === MAX_LOGIN_ATTEMPTS) throw err;
+      try { await client.destroy(); } catch {}
+    }
+  }
+}
+
+// If every in-process attempt fails, don't give up silently and stay
+// offline forever — exit so Render restarts the container and the retry
+// loop starts fresh (Render backs off and keeps retrying a crashing
+// container, which is what actually recovers this once the underlying
+// network issue clears, however long that takes).
+loginWithTimeout().catch(err => {
+  console.error("Main login failed after all retries:", err);
+  process.exit(1);
+});
