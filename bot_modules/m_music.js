@@ -3,6 +3,7 @@ const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } 
 const { DisTube }      = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
+const { withTimeout } = require("../data/utils/timeout.js");
 // ffmpeg-static's bundled binary segfaults on Render when reading SoundCloud's
 // HLS (.m3u8) streams, so we use @ffmpeg-installer/ffmpeg's binary instead.
 // FFMPEG_PATH still overrides both, e.g. to point at a system-installed ffmpeg.
@@ -138,7 +139,7 @@ async function handleMusicCommand(command, args, message) {
     const query = args.join(" ");
     let results;
     try {
-      results = await soundcloudPlugin.search(query, "track", 10);
+      results = await withTimeout(soundcloudPlugin.search(query, "track", 10), 15000, "SoundCloud search");
     } catch (err) {
       console.error("Search error:", err);
       return message.reply(`  ${err.message || "Could not search SoundCloud."}`);

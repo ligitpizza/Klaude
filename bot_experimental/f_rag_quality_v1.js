@@ -8,6 +8,12 @@ const { withRetry } = require("../data/utils/retry.js");
 
 let LOG_COUNTER = 0;
 
+// node-fetch has no default timeout, so a stalled connection (observed
+// intermittently on Render) leaves the await hanging indefinitely instead
+// of failing into the existing retry/fallback logic. Bound every outbound
+// call here to the same value.
+const FETCH_TIMEOUT_MS = 15000;
+
 // ── Rate limit config ─────────────────────────────────────────────────────────
 const RATE_LIMIT_MAX    = 8;  // max requests per window
 const RATE_LIMIT_WINDOW = 60;  // seconds
@@ -166,7 +172,8 @@ async function searchTavily(rawQuery) {
         max_results: 5,
         include_answer: true,
         include_raw_content: false,
-      })
+      }),
+      timeout: FETCH_TIMEOUT_MS,
     });
     if (!response.ok) {
       console.error('Tavily failed:', response.status);
@@ -214,7 +221,8 @@ async function enrichWithTavily(primaryResult, userQuery) {
         max_results: 4,
         include_answer: true,
         include_raw_content: false,
-      })
+      }),
+      timeout: FETCH_TIMEOUT_MS,
     });
 
     if (!response.ok) {
@@ -251,7 +259,7 @@ async function searchNews(rawQuery) {
   try {
     console.log(`📰 NewsAPI searching: ${query}`);
     const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=5&apiKey=${process.env.NEWSAPI_KEY}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { timeout: FETCH_TIMEOUT_MS });
     if (!response.ok) throw new Error('NewsAPI failed');
     const data = await response.json();
     if (!data.articles?.length) throw new Error('NewsAPI returned no articles');
@@ -280,7 +288,7 @@ async function searchMalaysiaNews(rawQuery) {
   try {
     console.log(`🇲🇾 Malaysia news searching: ${query}`);
     const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=5&apiKey=${process.env.NEWSAPI_KEY}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { timeout: FETCH_TIMEOUT_MS });
     if (!response.ok) throw new Error('NewsAPI failed');
     const data = await response.json();
 
@@ -314,7 +322,7 @@ async function searchMovie(rawQuery) {
   try {
     console.log(`🎬 TMDB searching: ${query}`);
     const searchUrl = `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(query)}&api_key=${process.env.TMDB_KEY}`;
-    const searchRes = await fetch(searchUrl);
+    const searchRes = await fetch(searchUrl, { timeout: FETCH_TIMEOUT_MS });
     if (!searchRes.ok) throw new Error(`TMDB search HTTP ${searchRes.status}`);
 
     const searchData = await searchRes.json();
@@ -326,7 +334,7 @@ async function searchMovie(rawQuery) {
     const type = isMovie ? 'movie' : 'tv';
 
     const detailUrl = `https://api.themoviedb.org/3/${type}/${id}?api_key=${process.env.TMDB_KEY}&append_to_response=credits`;
-    const detailRes = await fetch(detailUrl);
+    const detailRes = await fetch(detailUrl, { timeout: FETCH_TIMEOUT_MS });
     if (!detailRes.ok) throw new Error(`TMDB detail HTTP ${detailRes.status}`);
     const d = await detailRes.json();
 
@@ -391,7 +399,7 @@ async function searchGame(rawQuery) {
   console.log(`🎮 RAWG URL: ${url}`);
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { timeout: FETCH_TIMEOUT_MS });
     if (!response.ok) throw new Error(`RAWG HTTP ${response.status}`);
     const data = await response.json();
     if (!data.results?.length) throw new Error('RAWG returned no results');
@@ -429,7 +437,7 @@ async function searchGameByPublisher(rawQuery, hint = '') {
     console.log(`🎮 RAWG publisher search: ${query}`);
     const params = new URLSearchParams({ search: query, page_size: '6', key: process.env.RAWG_KEY });
     const url = `https://api.rawg.io/api/games?${params.toString()}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { timeout: FETCH_TIMEOUT_MS });
     if (!response.ok) return null;
     const data = await response.json();
     if (!data.results?.length) return null;
@@ -452,7 +460,7 @@ async function searchSimilarGames(gameName) {
   try {
     console.log(`🎮 RAWG similar games for: ${gameName}`);
     const searchParams = new URLSearchParams({ search: gameName, page_size: '1', key: process.env.RAWG_KEY });
-    const searchRes = await fetch(`https://api.rawg.io/api/games?${searchParams.toString()}`);
+    const searchRes = await fetch(`https://api.rawg.io/api/games?${searchParams.toString()}`, { timeout: FETCH_TIMEOUT_MS });
     if (!searchRes.ok) return null;
     const searchData = await searchRes.json();
     if (!searchData.results?.length) return null;
@@ -460,7 +468,7 @@ async function searchSimilarGames(gameName) {
     const gameId = searchData.results[0].id;
     const foundName = searchData.results[0].name;
 
-    const suggestRes = await fetch(`https://api.rawg.io/api/games/${gameId}/suggested?key=${process.env.RAWG_KEY}`);
+    const suggestRes = await fetch(`https://api.rawg.io/api/games/${gameId}/suggested?key=${process.env.RAWG_KEY}`, { timeout: FETCH_TIMEOUT_MS });
     if (!suggestRes.ok) return null;
     const suggestData = await suggestRes.json();
     if (!suggestData.results?.length) return null;
@@ -498,7 +506,8 @@ async function fetchFromAny(messages) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.GOOGLE_API_KEY}`
       },
-      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1500 })
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1500 }),
+      timeout: FETCH_TIMEOUT_MS,
     }));
 
     if (response.status === 429) { console.log(`Model ${model} rate limited, trying next...`); continue; }
