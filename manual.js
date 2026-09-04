@@ -21,74 +21,96 @@ const botMsg = () =>
 
 // ─── Help Pages ───────────────────────────────────────────────────────────────
 // One embed per module — --help pages through these with ◀ / ▶ buttons
-// instead of cramming everything into one wall-of-text embed.
+// instead of cramming everything into one wall-of-text embed. Small/niche
+// modules (Keyword Control, Extractor) ride along on the AI page instead of
+// getting their own, and General (-uptime) is pinned to the bottom of every
+// page rather than being its own page.
 function buildHelpPages() {
   const pages = [
     {
       title: "🤖 AI",
-      lines: [
-        "`@wes {msg}` Chat with the AI",
-        "`ai--help` Show AI-specific help",
+      sections: [
+        {
+          name: "🤖 AI",
+          lines: [
+            "`@wes {msg}` Chat with the AI",
+            "`ai--help` Show AI-specific help",
+          ],
+        },
+        {
+          name: "🛡️ Keyword Control",
+          lines: [
+            "`-ton` Enable keyword control",
+            "`-toff` Disable keyword control",
+            "`-tstat` Show current status",
+          ],
+        },
+        {
+          name: "🔍 Extractor",
+          lines: [
+            "`--myid` Your user ID",
+          ],
+        },
       ],
     },
     {
       title: "🎵 Music",
-      lines: [
-        "`-play <song/url>` Play from YouTube, Spotify, SoundCloud",
-        "`-skip` Skip current song",
-        "`-stop` Stop and clear queue",
-        "`-pause` Pause playback",
-        "`-resume` Resume playback",
-        "`-queue` Show queue",
-        "`-nowplaying` Show current song",
-        "`-loop [off|song|queue]` Toggle loop mode",
-        "`-volume <0-100>` Set volume",
-        "`-leave` Disconnect bot from voice",
-        "`-search <query>` Search SoundCloud and pick a track",
-        "`-ask rec [song]` Recommend similar songs",
-        "`-ask desc [song]` Get info about a song",
-        "`-ask <question>` General Q&A with the bot assistant",
+      sections: [
+        {
+          name: "🎵 Music",
+          lines: [
+            "`-play <song/url>` Play from YouTube, Spotify, SoundCloud",
+            "`-skip` Skip current song",
+            "`-stop` Stop and clear queue",
+            "`-pause` Pause playback",
+            "`-resume` Resume playback",
+            "`-queue` Show queue",
+            "`-nowplaying` Show current song",
+            "`-loop [off|song|queue]` Toggle loop mode",
+            "`-volume <0-100>` Set volume",
+            "`-leave` Disconnect bot from voice",
+            "`-search <query>` Search SoundCloud and pick a track",
+            "`-ask rec [song]` Recommend similar songs",
+            "`-ask desc [song]` Get info about a song",
+            "`-ask <question>` General Q&A with the bot assistant",
+          ],
+        },
       ],
     },
     {
       title: "📸 Photo Tracker",
-      lines: [
-        "`-mystat` Your photo upload stats",
-        "`-photostat @user` Stats for a specific user",
-        "`-toposter` Top photo contributors leaderboard",
-        "`-serverstat` Server-wide photo stats",
-        "`-channelstat` Current channel photo stats",
-      ],
-    },
-    {
-      title: "🛡️ Keyword Control",
-      lines: [
-        "`-ton` Enable keyword control",
-        "`-toff` Disable keyword control",
-        "`-tstat` Show current status",
-      ],
-    },
-    {
-      title: "🔍 Extractor",
-      lines: [
-        "`--myid` Your user ID",
-      ],
-    },
-    {
-      title: "⚙️ General",
-      lines: [
-        "`-uptime` How long the bot has been online",
+      sections: [
+        {
+          name: "📸 Photo Tracker",
+          lines: [
+            "`-mystat` Your photo upload stats",
+            "`-photostat @user` Stats for a specific user",
+            "`-toposter` Top photo contributors leaderboard",
+            "`-serverstat` Server-wide photo stats",
+            "`-channelstat` Current channel photo stats",
+          ],
+        },
       ],
     },
   ];
 
-  return pages.map((page, i) =>
-    new EmbedBuilder()
+  const generalSection = {
+    name: "⚙️ General",
+    lines: ["`-uptime` How long the bot has been online"],
+  };
+
+  return pages.map((page, i) => {
+    const embed = new EmbedBuilder()
       .setColor("#282d2f")
       .setTitle(`Command List — ${page.title}`)
-      .setDescription(page.lines.join("\n"))
-      .setFooter({ text: `Bot by ${getCreatorTag()} • Page ${i + 1}/${pages.length} • Use --helpai for AI-specific commands` })
-  );
+      .setFooter({ text: `Bot by ${getCreatorTag()} • Page ${i + 1}/${pages.length} • Use --helpai for AI-specific commands` });
+
+    for (const section of [...page.sections, generalSection]) {
+      embed.addFields({ name: section.name, value: section.lines.join("\n"), inline: false });
+    }
+
+    return embed;
+  });
 }
 
 function buildHelpNavRow(page, totalPages) {
