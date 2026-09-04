@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 
 function initManual(client) {
 
@@ -19,136 +19,83 @@ const getCreatorTag = () => creator ? creator.tag : "the owner";
 const botMsg = () =>
   `\n\n**(I am a bot, and this action was performed automatically. Please contact ${getCreatorTag()} the moderators of this sub if you have any questions or concerns.)**`;
 
-// ─── Help Embed Builder ───────────────────────────────────────────────────────
-function buildHelpEmbed() {
-  return new EmbedBuilder()
-    .setColor("#282d2f")
-    .setTitle("Command List")
-    .addFields(
-      // ── AI (full width) ──────────────────────────────────────────────────────
-      {
-        name: "🤖 AI",
-        value: [
-          "`@wes {msg}` Chat with the AI",
-          "`ai--help` Show AI-specific help",
-        ].join("\n"),
-        inline: false,
-      },
-      { name: "\u200b", value: "\u200b", inline: false },
-      {
-        name: "🎵 Music",
-        value: [
-          "`-play <song/url>` Play from YouTube, Spotify, SoundCloud",
-          "`-skip` Skip current song",
-          "`-stop` Stop and clear queue",
-          "`-pause` Pause playback",
-          "`-resume` Resume playback",
-          "`-queue` Show queue",
-          "`-nowplaying` Show current song",
-          "`-loop [off|song|queue]` Toggle loop mode",
-          "`-volume <0-100>` Set volume",
-          "`-leave` Disconnect bot from voice",
-          "`-search <query>` Search SoundCloud and pick a track",
-          "`-ask <question>` Ask the bot assistant — what's playing, recommendations, or general Q&A",
-        ].join("\n"),
-        inline: true,
-      },
-      {
-        // name: "\u200b", // invisible header — right column
-        name: "📸 Photo Tracker",
-        value: [
-          "`-mystat` Your photo upload stats",
-          "`-photostat @user` Stats for a specific user",
-          "`-toposter` Top photo contributors leaderboard",
-          "`-serverstat` Server-wide photo stats",
-          "`-channelstat` Current channel photo stats",
-        ].join("\n"),
-        inline: true,
-      },
-      // ── spacer row so next section starts on a new line ──────────────────────
-      { name: "\u200b", value: "\u200b", inline: false },
-      {
-        name: "🛡️ Keyword Control",
-        value: [
-          "`-ton` Enable keyword control",
-          "`-toff` Disable keyword control",
-          "`-tstat` Show current status",
-          " ",
-          "🔍 Extractor",
-          "`--myid` Your user ID",
-          // "`--userid @user` Get a user's ID",
-          // "`--serverids` List all member IDs",
-          // "`--userinfo @user` Detailed user info",
-          // "`--track @user` Log tracking snapshot", 
-          // "`--stk @user` Advanced profile view",
-          // "`--export` Full server data export",
-          // "`--analyze @user` Message pattern analysis",
-          // "`--webhooks` List server webhooks",
-          // "`--invites` List active invites",  
-          // "`--permissions @user` Permission analysis",
-          // "`--correlation` Data correlation report",
-          // "`--logs` Recent access logs",
-          // "`--criticallogs` Critical events only",
-        ].join("\n"),
-        inline: true,
-      },
-      // {
-      //   name: "📸 Photo Tracker",
-      //   value: [
-      //     "`-mystat` Your photo upload stats",
-      //     "`-photostat @user` Stats for a specific user",
-      //     "`-toposter` Top photo contributors leaderboard",
-      //     "`-serverstat` Server-wide photo stats",
-      //     "`-channelstat` Current channel photo stats",
-      //   ].join("\n"),
-      //   inline: true,
-      // },
-      // ── spacer ───────────────────────────────────────────────────────────────
-      // { name: "\u200b", value: "\u200b", inline: false },
-      // {
-      //   name: "🔍 Extractor",
-      //   value: [
-      //     "`--myid` Your user ID",
-      //     "`--userid @user` Get a user's ID",
-      //     "`--serverids` List all member IDs",
-      //     "`--userinfo @user` Detailed user info",
-      //     "`--track @user` Log tracking snapshot",
-      //     "`--stalk @user` Advanced profile view",
-      //     "`--export` Full server data export",
-      //     "`--analyze @user` Message pattern analysis",
-      //     "`--webhooks` List server webhooks",
-      //     "`--invites` List active invites",
-      //     "`--permissions @user` Permission analysis",
-      //     "`--correlation` Data correlation report",
-      //     "`--logs` Recent access logs",
-      //     "`--criticallogs` Critical events only",
-      //   ].join("\n"),
-      //   inline: true,
-      // },
-      // {
-      //   name: "\u200b",
-      //   value: [
-      //     "`--analyze @user` Message pattern analysis",
-      //     // "`--webhooks` List server webhooks",
-      //     // "`--invites` List active invites",
-      //     // "`--permissions @user` Permission analysis",
-      //     // "`--correlation` Data correlation report",
-      //     // "`--logs` Recent access logs",
-      //     // "`--criticallogs` Critical events only",
-      //   ].join("\n"),
-      //   inline: true,
-      // },
-      // ── spacer ───────────────────────────────────────────────────────────────
-      { name: "\u200b", value: "\u200b", inline: false },
-      // ── General (full width) ─────────────────────────────────────────────────
-      {
-        name: "⚙️ General",
-        value: "`-uptime` How long the bot has been online",
-        inline: false,
-      },
-    )
-    // .setDescription("\u00a0".repeat(150))
-    .setFooter({ text: `Bot by ${getCreatorTag()} • Use --helpai for AI-specific commands` });
+// ─── Help Pages ───────────────────────────────────────────────────────────────
+// One embed per module — --help pages through these with ◀ / ▶ buttons
+// instead of cramming everything into one wall-of-text embed.
+function buildHelpPages() {
+  const pages = [
+    {
+      title: "🤖 AI",
+      lines: [
+        "`@wes {msg}` Chat with the AI",
+        "`ai--help` Show AI-specific help",
+      ],
+    },
+    {
+      title: "🎵 Music",
+      lines: [
+        "`-play <song/url>` Play from YouTube, Spotify, SoundCloud",
+        "`-skip` Skip current song",
+        "`-stop` Stop and clear queue",
+        "`-pause` Pause playback",
+        "`-resume` Resume playback",
+        "`-queue` Show queue",
+        "`-nowplaying` Show current song",
+        "`-loop [off|song|queue]` Toggle loop mode",
+        "`-volume <0-100>` Set volume",
+        "`-leave` Disconnect bot from voice",
+        "`-search <query>` Search SoundCloud and pick a track",
+        "`-ask rec [song]` Recommend similar songs",
+        "`-ask desc [song]` Get info about a song",
+        "`-ask <question>` General Q&A with the bot assistant",
+      ],
+    },
+    {
+      title: "📸 Photo Tracker",
+      lines: [
+        "`-mystat` Your photo upload stats",
+        "`-photostat @user` Stats for a specific user",
+        "`-toposter` Top photo contributors leaderboard",
+        "`-serverstat` Server-wide photo stats",
+        "`-channelstat` Current channel photo stats",
+      ],
+    },
+    {
+      title: "🛡️ Keyword Control",
+      lines: [
+        "`-ton` Enable keyword control",
+        "`-toff` Disable keyword control",
+        "`-tstat` Show current status",
+      ],
+    },
+    {
+      title: "🔍 Extractor",
+      lines: [
+        "`--myid` Your user ID",
+      ],
+    },
+    {
+      title: "⚙️ General",
+      lines: [
+        "`-uptime` How long the bot has been online",
+      ],
+    },
+  ];
+
+  return pages.map((page, i) =>
+    new EmbedBuilder()
+      .setColor("#282d2f")
+      .setTitle(`Command List — ${page.title}`)
+      .setDescription(page.lines.join("\n"))
+      .setFooter({ text: `Bot by ${getCreatorTag()} • Page ${i + 1}/${pages.length} • Use --helpai for AI-specific commands` })
+  );
+}
+
+function buildHelpNavRow(page, totalPages) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("help-prev").setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+    new ButtonBuilder().setCustomId("help-next").setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages - 1),
+  );
 }
 
 
@@ -176,7 +123,7 @@ function buildHelpAIEmbed() {
         inline: true,
       },
       // ── spacer ───────────────────────────────────────────────────────────────
-      { name: "\u200b", value: "\u200b", inline: false },
+      { name: "​", value: "​", inline: false },
       {
         name: "📋 Custom guidelines",
         value: [
@@ -200,7 +147,40 @@ client.on("messageCreate", async (message) => {
   const lower = message.content.toLowerCase();
 
   if (lower === "--help") {
-    return message.reply({ embeds: [buildHelpEmbed()] });
+    const pages = buildHelpPages();
+    let page = 0;
+
+    let sentMessage;
+    try {
+      sentMessage = await message.reply({ embeds: [pages[page]], components: [buildHelpNavRow(page, pages.length)] });
+    } catch (err) {
+      console.error("Help send error:", err);
+      return;
+    }
+
+    const collector = sentMessage.createMessageComponentCollector({ time: 120_000 });
+
+    collector.on("collect", async (interaction) => {
+      if (interaction.user.id !== message.author.id) {
+        interaction.reply({ content: "This isn't your help menu!", flags: MessageFlags.Ephemeral }).catch(() => {});
+        return;
+      }
+
+      if (interaction.customId === "help-prev") page = Math.max(0, page - 1);
+      if (interaction.customId === "help-next") page = Math.min(pages.length - 1, page + 1);
+
+      try {
+        await interaction.update({ embeds: [pages[page]], components: [buildHelpNavRow(page, pages.length)] });
+      } catch (err) {
+        console.error("Help navigation error:", err);
+      }
+    });
+
+    collector.on("end", () => {
+      sentMessage.edit({ components: [] }).catch(() => {});
+    });
+
+    return;
   }
 
   if (lower === "ai--help") {

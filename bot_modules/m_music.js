@@ -100,7 +100,9 @@ const MUSIC_HELP =
   "`-volume <0-100>` — Set volume.\n" +
   "`-leave` — Bot quit voice chat.\n" +
   "`-search <query>` — Search SoundCloud and pick a track from a list.\n" +
-  "`-ask <question>` — Ask the bot assistant: what's playing, recommend similar songs, or general Q&A.\n" +
+  "`-ask rec [song]` — Recommend similar songs (defaults to what's playing).\n" +
+  "`-ask desc [song]` — Get info about a song (defaults to what's playing).\n" +
+  "`-ask <question>` — General Q&A with the bot assistant.\n" +
   "\n**Supported sources:** YouTube · Spotify · SoundCloud\n";
 
 const MUSIC_COMMANDS = new Set([
@@ -110,23 +112,17 @@ const MUSIC_COMMANDS = new Set([
 ]);
 
 // ─── Bot assistant (-ask / -ai) helpers ────────────────────────────────────────
-async function classifyAskIntent(question) {
-  const messages = [
-    {
-      role: "system",
-      content: `Classify the user's message into exactly one category:
-- "nowplaying" — asking what track is currently playing, or asking for background info about the current song/artist
-- "recommend" — asking for song/music recommendations similar to what's playing or in the queue
-- "general" — anything else
-
-Reply with ONLY the category word, nothing else.`,
-    },
-    { role: "user", content: question },
-  ];
-  const result = await askGemini(messages, { temperature: 0, maxTokens: 10 });
-  const category = result?.toLowerCase().trim();
-  const valid = ["nowplaying", "recommend", "general"];
-  return valid.includes(category) ? category : "general";
+// Resolves a user-typed song name to a real, playable track via SoundCloud
+// search, so "-ask rec <song>"/"-ask desc <song>" work on any track, not
+// just whatever's currently playing.
+async function resolveSeedSong(query) {
+  try {
+    const results = await withTimeout(soundcloudPlugin.search(query, "track", 1), 15000, "SoundCloud seed search");
+    return results?.[0] || null;
+  } catch (err) {
+    console.error(`Seed song search failed for "${query}":`, err.message);
+    return null;
+  }
 }
 
 async function fetchSongBackground(query) {
@@ -142,20 +138,20 @@ async function fetchSongBackground(query) {
         include_answer: true, include_raw_content: false,
       }),
     }), 15000, "Tavily song lookup");
-    if (!response.ok) return null;
+    if (!response.ok) return { text: null, url: null };
     const data = await response.json();
-    if (data.answer) return data.answer;
-    if (data.results?.length) return data.results.map(r => r.content).join("\n").slice(0, 1500);
-    return null;
+    const text = data.answer || (data.results?.length ? data.results.map(r => r.content).join("\n").slice(0, 1500) : null);
+    const url = data.results?.[0]?.url || null;
+    return { text, url };
   } catch (err) {
     console.error("Song background lookup error:", err);
-    return null;
+    return { text: null, url: null };
   }
 }
 
 async function handleNowPlayingInfo(message, song) {
   const artist = song.uploader?.name || song.user?.username || "Unknown";
-  const background = await fetchSongBackground(`${song.name} ${artist} song about`);
+  const { text: background, url: infoUrl } = await fetchSongBackground(`${song.name} ${artist} song about`);
 
   const messages = [
     {
@@ -173,6 +169,10 @@ async function handleNowPlayingInfo(message, song) {
   ];
   const blurb = await askGemini(messages, { maxTokens: 300 });
 
+  // Prefer the real source we found the background info from; fall back to
+  // a YouTube search for the artist so there's always somewhere to click.
+  const artistLink = infoUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(artist)}`;
+
   return message.channel.send({
     embeds: [new EmbedBuilder()
       .setColor("#282d2f")
@@ -182,6 +182,7 @@ async function handleNowPlayingInfo(message, song) {
       .addFields(
         { name: "Uploader/Artist", value: artist,                inline: true },
         { name: "Duration",        value: song.formattedDuration, inline: true },
+        { name: "🔗 More about the artist", value: `[Open link](${artistLink})`, inline: false },
       )
       .setThumbnail(song.thumbnail)],
   });
@@ -557,28 +558,38 @@ async function handleMusicCommand(command, args, message) {
 
   // ── -ask / -ai ─────────────────────────────────────────────────────────────
   if (command === "ask" || command === "ai") {
-    if (!args.length) return message.reply("Ask me something! Example: `-ask what's playing` or `-ask recommend something like this`");
+    if (!args.length) return message.reply("Try `-ask rec <song>`, `-ask desc <song>`, or `-ask <question>`");
     if (!process.env.GOOGLE_API_KEY) return message.reply("The bot assistant isn't configured on this server.");
 
-    const question = args.join(" ");
+    const sub = args[0].toLowerCase();
     const queue = distube.getQueue(message.guildId);
     const currentSong = queue?.songs?.[0];
 
     try {
-      const intent = await classifyAskIntent(question);
-
-      if (intent === "nowplaying") {
-        if (!currentSong) return message.reply("Nothing is playing right now!");
-        return await handleNowPlayingInfo(message, currentSong);
-      }
-
-      if (intent === "recommend") {
-        if (!currentSong) return message.reply("Nothing is playing right now — play something first so I know what to recommend from!");
+      if (sub === "rec" || sub === "recommend") {
+        const songQuery = args.slice(1).join(" ").trim();
+        const seed = songQuery ? await resolveSeedSong(songQuery) : currentSong;
+        if (!seed) {
+          return message.reply(songQuery
+            ? `Couldn't find "${songQuery}" to base recommendations on.`
+            : "Nothing is playing right now — play something first, or use `-ask rec <song>`.");
+        }
         if (!voiceChannel) return message.reply("You need to be in a voice channel to queue a recommendation!");
-        return await handleRecommend(message, currentSong, voiceChannel);
+        return await handleRecommend(message, seed, voiceChannel);
       }
 
-      return await handleGeneralAsk(message, question, currentSong);
+      if (sub === "desc" || sub === "description") {
+        const songQuery = args.slice(1).join(" ").trim();
+        const seed = songQuery ? await resolveSeedSong(songQuery) : currentSong;
+        if (!seed) {
+          return message.reply(songQuery
+            ? `Couldn't find "${songQuery}".`
+            : "Nothing is playing right now — play something first, or use `-ask desc <song>`.");
+        }
+        return await handleNowPlayingInfo(message, seed);
+      }
+
+      return await handleGeneralAsk(message, args.join(" "), currentSong);
     } catch (err) {
       console.error("Ask error:", err);
       return message.reply("  Something went wrong with the bot assistant!");
