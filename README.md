@@ -269,6 +269,18 @@ docker run --env-file .env -p 3001:3001 rag-like-discord-bot
 
 > The Replit version uses port `3000`. Do not mix the two. (not working anymore)
 
+> **Region note:** deploy to Render's **Oregon (US)** region. Singapore's shared outbound IP range was found to be rate-limited/blocked by Discord's gateway — the bot logged into Discord fine locally but its `client.login()` timed out consistently for 12+ hours from Singapore, with plain HTTPS to `discord.com` working normally the whole time. Switching region fixed it immediately.
+
+---
+
+## Reliability
+
+A few fixes worth knowing about if something looks slow or crashes unexpectedly:
+
+- **Redis/fetch timeouts** (Upstash calls, Tavily/NewsAPI/TMDB/RAWG/Gemini): if any of these stalls (network hiccup, slow API), the bot now fails fast (8–15s) and shows an error instead of hanging that command indefinitely.
+- **try/catch gaps fixed** (photo tracker, `ai--g` guidelines): a failed Redis call in those paths now just logs an error instead of crashing and taking the whole bot offline.
+- **Login retry-with-backoff**: if Discord login fails on boot, it retries a few times with backoff instead of hanging forever, and exits cleanly (so Render restarts it) if all attempts fail.
+
 ---
 
 ## Planned Changes
