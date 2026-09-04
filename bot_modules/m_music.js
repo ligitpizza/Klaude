@@ -1,9 +1,10 @@
 require("dotenv").config();
 const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require("discord.js");
-const { DisTube }      = require("distube");
+const { DisTube, RepeatMode } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
 const { withTimeout } = require("../data/utils/timeout.js");
+const { askGemini } = require("../data/utils/gemini.js");
 // ffmpeg-static's bundled binary segfaults on Render when reading SoundCloud's
 // HLS (.m3u8) streams, so we use @ffmpeg-installer/ffmpeg's binary instead.
 // FFMPEG_PATH still overrides both, e.g. to point at a system-installed ffmpeg.
@@ -95,17 +96,217 @@ const MUSIC_HELP =
   "`-resume` — Resume paused song.\n" +
   "`-queue` — Show current queue.\n" +
   "`-nowplaying` — Show current song info.\n" +
+  "`-loop [off|song|queue]` — Toggle loop mode, or jump straight to one.\n" +
   "`-volume <0-100>` — Set volume.\n" +
   "`-leave` — Bot quit voice chat.\n" +
   "`-search <query>` — Search SoundCloud and pick a track from a list.\n" +
-  // "`-ask <question>` — Ask the AI assistant.\n" +
+  "`-ask <question>` — Ask the bot assistant: what's playing, recommend similar songs, or general Q&A.\n" +
   "\n**Supported sources:** YouTube · Spotify · SoundCloud\n";
 
 const MUSIC_COMMANDS = new Set([
   "play", "p", "skip", "s", "stop", "pause", "resume",
   "queue", "q", "volume", "vol", "nowplaying", "np", "ask", "ai", "leave", "l",
-  "search", "se",
+  "search", "se", "loop", "lp",
 ]);
+
+// ─── Bot assistant (-ask / -ai) helpers ────────────────────────────────────────
+async function classifyAskIntent(question) {
+  const messages = [
+    {
+      role: "system",
+      content: `Classify the user's message into exactly one category:
+- "nowplaying" — asking what track is currently playing, or asking for background info about the current song/artist
+- "recommend" — asking for song/music recommendations similar to what's playing or in the queue
+- "general" — anything else
+
+Reply with ONLY the category word, nothing else.`,
+    },
+    { role: "user", content: question },
+  ];
+  const result = await askGemini(messages, { temperature: 0, maxTokens: 10 });
+  const category = result?.toLowerCase().trim();
+  const valid = ["nowplaying", "recommend", "general"];
+  return valid.includes(category) ? category : "general";
+}
+
+async function fetchSongBackground(query) {
+  try {
+    const response = await withTimeout(fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        query, search_depth: "basic", max_results: 3,
+        include_answer: true, include_raw_content: false,
+      }),
+    }), 15000, "Tavily song lookup");
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.answer) return data.answer;
+    if (data.results?.length) return data.results.map(r => r.content).join("\n").slice(0, 1500);
+    return null;
+  } catch (err) {
+    console.error("Song background lookup error:", err);
+    return null;
+  }
+}
+
+async function handleNowPlayingInfo(message, song) {
+  const artist = song.uploader?.name || song.user?.username || "Unknown";
+  const background = await fetchSongBackground(`${song.name} ${artist} song about`);
+
+  const messages = [
+    {
+      role: "system",
+      content: "You are a music bot writing a short, engaging 2-3 sentence description of a track, like a mini "
+        + "Wikipedia blurb. Be concise and factual; if you don't recognize it and no background info is given, "
+        + "say so briefly instead of making things up.",
+    },
+    {
+      role: "user",
+      content: background
+        ? `Track: "${song.name}" by ${artist}. Background info:\n${background}`
+        : `Track: "${song.name}" by ${artist}. No background info was found — answer from your own knowledge if you recognize it, otherwise say you don't have info on this one.`,
+    },
+  ];
+  const blurb = await askGemini(messages, { maxTokens: 300 });
+
+  return message.channel.send({
+    embeds: [new EmbedBuilder()
+      .setColor("#282d2f")
+      .setTitle(`About: ${song.name}`)
+      .setURL(song.url)
+      .setDescription(blurb || "Couldn't find any info on this track.")
+      .addFields(
+        { name: "Uploader/Artist", value: artist,                inline: true },
+        { name: "Duration",        value: song.formattedDuration, inline: true },
+      )
+      .setThumbnail(song.thumbnail)],
+  });
+}
+
+async function handleRecommend(message, song, voiceChannel) {
+  const artist = song.uploader?.name || song.user?.username || "Unknown";
+
+  const messages = [
+    {
+      role: "system",
+      content: "You recommend real, existing songs similar in genre/style to a given track. Reply with ONLY a "
+        + "list of 5 \"Song Title - Artist\" lines, nothing else, no numbering, no extra text.",
+    },
+    { role: "user", content: `Recommend songs similar to "${song.name}" by ${artist}.` },
+  ];
+  const raw = await askGemini(messages, { maxTokens: 200 });
+  const suggestions = (raw || "")
+    .split("\n")
+    .map(line => line.replace(/^[-•\d.]+\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (!suggestions.length) return message.reply("Couldn't come up with any recommendations right now.");
+
+  const found = [];
+  for (const suggestion of suggestions) {
+    try {
+      const results = await withTimeout(soundcloudPlugin.search(suggestion, "track", 1), 15000, "SoundCloud recommend search");
+      if (results?.length) found.push(results[0]);
+    } catch (err) {
+      console.error(`Recommend search failed for "${suggestion}":`, err.message);
+    }
+  }
+
+  if (!found.length) return message.reply("Couldn't find playable versions of any recommendations right now.");
+
+  const truncate = (str, max) => (str.length > max ? `${str.slice(0, max - 1)}…` : str);
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("soundcloud-search")
+    .setPlaceholder("Pick a track to queue")
+    .addOptions(found.map((s, i) => ({
+      label:       truncate(s.name, 100),
+      description: truncate(`${s.uploader?.name ?? "Unknown"} • ${s.formattedDuration}`, 100),
+      value:       String(i),
+    })));
+
+  const embed = new EmbedBuilder()
+    .setColor("#282d2f")
+    .setTitle(`Recommended — similar to "${song.name}"`)
+    .setDescription(found.map((s, i) => `**${i + 1}.** ${s.name} — *${s.formattedDuration}*`).join("\n"))
+    .setFooter({ text: "Pick a track from the dropdown below — expires in 30s" });
+
+  let sentMessage;
+  try {
+    sentMessage = await message.channel.send({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(menu)],
+    });
+  } catch (err) {
+    console.error("Recommend send error:", err);
+    return message.reply("Could not display recommendations — please try again.").catch(() => {});
+  }
+
+  const collector = sentMessage.createMessageComponentCollector({ time: 30_000 });
+
+  collector.on("collect", async (interaction) => {
+    if (interaction.user.id !== message.author.id) {
+      interaction.reply({ content: "This isn't your recommendation list!", flags: MessageFlags.Ephemeral }).catch(() => {});
+      return;
+    }
+
+    const picked = found[Number(interaction.values[0])];
+    collector.stop("picked");
+
+    try {
+      await interaction.update({ embeds: [embed], components: [], content: `Selected: **${picked.name}**` });
+    } catch (err) {
+      console.error("Recommend update error:", err);
+    }
+
+    try {
+      await distube.play(voiceChannel, picked.url, {
+        member: message.member, textChannel: message.channel, message,
+      });
+    } catch (err) {
+      console.error("Recommend play error:", err);
+      message.channel.send(`  ${err.message || "Could not play that song."}`).catch(() => {});
+    }
+  });
+
+  collector.on("end", (_collected, reason) => {
+    if (reason === "picked") return;
+    sentMessage.edit({
+      embeds: [embed],
+      components: [],
+      content: "Recommendations expired — run `-ask recommend ...` again.",
+    }).catch(() => {});
+  });
+}
+
+async function handleGeneralAsk(message, question, currentSong) {
+  const context = currentSong
+    ? `Currently playing: "${currentSong.name}" by ${currentSong.uploader?.name || currentSong.user?.username || "Unknown"}.`
+    : "Nothing is currently playing.";
+
+  const messages = [
+    { role: "system", content: `You're a helpful music bot assistant. Give short, casual responses. ${context}` },
+    { role: "user",   content: question },
+  ];
+  const answer = await askGemini(messages, { temperature: 0.8, maxTokens: 500 });
+  if (!answer) return message.reply("Bot is having issues right now!");
+
+  return message.channel.send({
+    embeds: [new EmbedBuilder()
+      .setColor("#282d2f")
+      .setTitle("🤖 Bot Assistant")
+      .addFields(
+        { name: "Your Question", value: question },
+        { name: "Answer",        value: answer   },
+      )
+      .setFooter({ text: `Asked by ${message.author.username}` })],
+  });
+}
 
 // ─── Command Handler ──────────────────────────────────────────────────────────
 async function handleMusicCommand(command, args, message) {
@@ -274,6 +475,28 @@ async function handleMusicCommand(command, args, message) {
     return;
   }
 
+  // ── -loop / -lp ────────────────────────────────────────────────────────────
+  if (command === "loop" || command === "lp") {
+    const queue = distube.getQueue(message.guildId);
+    if (!queue) return message.reply("Nothing is playing!");
+
+    const modeMap = {
+      off: RepeatMode.DISABLED, disable: RepeatMode.DISABLED, disabled: RepeatMode.DISABLED,
+      song: RepeatMode.SONG, track: RepeatMode.SONG,
+      queue: RepeatMode.QUEUE, all: RepeatMode.QUEUE,
+    };
+    const arg = args[0]?.toLowerCase();
+
+    const mode = arg in modeMap ? queue.setRepeatMode(modeMap[arg]) : queue.setRepeatMode();
+
+    const labels = {
+      [RepeatMode.DISABLED]: "Off",
+      [RepeatMode.SONG]:     "🔂 Looping current song",
+      [RepeatMode.QUEUE]:    "🔁 Looping whole queue",
+    };
+    return message.reply(`Loop mode: **${labels[mode]}**`);
+  }
+
   // ── -queue / -q ────────────────────────────────────────────────────────────
   if (command === "queue" || command === "q") {
     const queue = distube.getQueue(message.guildId);
@@ -332,51 +555,35 @@ async function handleMusicCommand(command, args, message) {
     });
   }
 
-    // ── -ask / -ai ─────────────────────────────────────────────────────────────
-  //   if (command === "ask" || command === "ai") {
-  //     if (!args.length) return message.reply("Ask me something! Example: `-ask good songs for a party`");
+  // ── -ask / -ai ─────────────────────────────────────────────────────────────
+  if (command === "ask" || command === "ai") {
+    if (!args.length) return message.reply("Ask me something! Example: `-ask what's playing` or `-ask recommend something like this`");
+    if (!process.env.GOOGLE_API_KEY) return message.reply("The bot assistant isn't configured on this server.");
 
-  //     const question = args.join(" ");
-  //     try {
-  //       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type":  "application/json",
-  //           "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-  //           "HTTP-Referer":  "https://discord.com",
-  //           "X-Title":       "Discord Music Bot",
-  //         },
-  //         body: JSON.stringify({
-  //           model:      "mistralai/devstral-2512:free",
-  //           messages:   [
-  //             { role: "system", content: "You're a helpful music bot assistant. Give short, casual responses." },
-  //             { role: "user",   content: question },
-  //           ],
-  //           temperature: 0.8,
-  //           max_tokens:  500,
-  //         }),
-  //       });
+    const question = args.join(" ");
+    const queue = distube.getQueue(message.guildId);
+    const currentSong = queue?.songs?.[0];
 
-  //       if (!response.ok) return message.reply("Bot is having issues right now!");
+    try {
+      const intent = await classifyAskIntent(question);
 
-  //       const data   = await response.json();
-  //       const answer = data.choices[0].message.content;
+      if (intent === "nowplaying") {
+        if (!currentSong) return message.reply("Nothing is playing right now!");
+        return await handleNowPlayingInfo(message, currentSong);
+      }
 
-  //       return message.channel.send({
-  //         embeds: [new EmbedBuilder()
-  //           .setColor("#282d2f")
-  //           .setTitle("🤖 Bot Assistant")
-  //           .addFields(
-  //             { name: "Your Question", value: question },
-  //             { name: "Answer",        value: answer   },
-  //           )
-  //           .setFooter({ text: `Asked by ${message.author.username}` })],
-  //       });
-  //     } catch (err) {
-  //       console.error("Bot error:", err);
-  //       return message.reply("  Something went wrong with the bot!");
-  //     }
-  //   }
+      if (intent === "recommend") {
+        if (!currentSong) return message.reply("Nothing is playing right now — play something first so I know what to recommend from!");
+        if (!voiceChannel) return message.reply("You need to be in a voice channel to queue a recommendation!");
+        return await handleRecommend(message, currentSong, voiceChannel);
+      }
+
+      return await handleGeneralAsk(message, question, currentSong);
+    } catch (err) {
+      console.error("Ask error:", err);
+      return message.reply("  Something went wrong with the bot assistant!");
+    }
+  }
 }
 
 module.exports = { initMusic, handleMusicCommand, MUSIC_COMMANDS, MUSIC_HELP };

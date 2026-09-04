@@ -5,6 +5,7 @@ const fetch = require("node-fetch");
 const { LOADIPHLPAPI } = require("node:dns");
 const redis = require("../data/db/redis_client.js");
 const { withRetry } = require("../data/utils/retry.js");
+const { askGemini } = require("../data/utils/gemini.js");
 
 let LOG_COUNTER = 0;
 
@@ -489,37 +490,10 @@ async function searchSimilarGames(gameName) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
-const FREE_MODELS = [
-  // "gemini-2.5-flash-lite",
-  // "gemini-2.5-flash",
-  // "gemini-3.1-flash",
-  "gemini-3.1-flash-lite",
-  "gemini-3-flash-live",
-];
-
+// Model fallback chain lives in data/utils/gemini.js, shared with the music
+// module's -ask command so both use the same fallback/timeout logic.
 async function fetchFromAny(messages) {
-  for (const model of FREE_MODELS) {
-    console.log(`Trying model: ${model}`);
-    const response = await withRetry(() => fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GOOGLE_API_KEY}`
-      },
-      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1500 }),
-      timeout: FETCH_TIMEOUT_MS,
-    }));
-
-    if (response.status === 429) { console.log(`Model ${model} rate limited, trying next...`); continue; }
-    if (!response.ok) { const errText = await response.text(); console.error(`Model ${model} error ${response.status}:`, errText); continue; }
-    const data = await response.json();
-    if (data.choices?.[0]?.message?.content) {
-      console.log(`Got response from model: ${model}`);
-      return data.choices[0].message.content.trim();
-    }
-    console.log(`Model ${model} returned empty, trying next...`);
-  }
-  return null;
+  return askGemini(messages);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 const gamenews = 'asking about gaming news, game announcements, upcoming releases buzz, gaming industry updates.'
