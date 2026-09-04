@@ -68,10 +68,6 @@ initRagQuality(client);
 require("./bot_modules/m_extractor.js");
 // require("./bot_modules/m_insomnia.js");
 
-//experimental
-// require('./bot_experimental/f_rag_location_v1.js');
-// require('./bot_experimental/f_rag_efficient_v1.js');
-
 //additional
 // require('./additional/a_insomnia_1.js');
 // require('./additional/a_insomnia_2.js');

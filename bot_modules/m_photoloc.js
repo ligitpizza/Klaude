@@ -29,38 +29,44 @@ client.on("messageCreate", async (message) => {
   const chanId = message.channel.id;
 
   try {
-    // Per-user stats
     const userKey = PHOTO_USER_KEY(userId, serverId);
-    const userRaw = await redis.get(userKey);
+    const srvKey  = PHOTO_SERVER_KEY(serverId);
+    const chKey   = PHOTO_CHANNEL_KEY(serverId, chanId);
+
+    // These three keys are independent of each other, so read them
+    // together instead of paying for 3 sequential round-trips.
+    const [userRaw, srvRaw, chRaw] = await Promise.all([
+      redis.get(userKey),
+      redis.get(srvKey),
+      redis.get(chKey),
+    ]);
+
     const userData = userRaw ? (typeof userRaw === "string" ? JSON.parse(userRaw) : userRaw) : {
       userId, username: message.author.username, serverId, total: 0, lastUpload: null
     };
     userData.total += count;
     userData.lastUpload = now;
     userData.username = message.author.username;
-    await redis.set(userKey, JSON.stringify(userData));
 
-    // Leaderboard (sorted set: score = total photos)
-    await redis.zadd(PHOTO_LEADERBOARD_KEY(serverId), { score: userData.total, member: userId });
-
-    // Server-wide stats
-    const srvKey = PHOTO_SERVER_KEY(serverId);
-    const srvRaw = await redis.get(srvKey);
     const srvData = srvRaw ? (typeof srvRaw === "string" ? JSON.parse(srvRaw) : srvRaw) : {
       total: 0, uniqueUsers: [], channelsUsed: []
     };
     srvData.total += count;
     if (!srvData.uniqueUsers.includes(userId)) srvData.uniqueUsers.push(userId);
     if (!srvData.channelsUsed.includes(chanId)) srvData.channelsUsed.push(chanId);
-    await redis.set(srvKey, JSON.stringify(srvData));
 
-    // Channel stats
-    const chKey = PHOTO_CHANNEL_KEY(serverId, chanId);
-    const chRaw = await redis.get(chKey);
     const chData = chRaw ? (typeof chRaw === "string" ? JSON.parse(chRaw) : chRaw) : { total: 0, uniqueUsers: [] };
     chData.total += count;
     if (!chData.uniqueUsers.includes(userId)) chData.uniqueUsers.push(userId);
-    await redis.set(chKey, JSON.stringify(chData));
+
+    // Same for the writes — each targets a different key, so there's no
+    // ordering dependency between them.
+    await Promise.all([
+      redis.set(userKey, JSON.stringify(userData)),
+      redis.zadd(PHOTO_LEADERBOARD_KEY(serverId), { score: userData.total, member: userId }),
+      redis.set(srvKey, JSON.stringify(srvData)),
+      redis.set(chKey, JSON.stringify(chData)),
+    ]);
 
     console.log(`📸 ${message.author.username} uploaded ${count} image(s) in #${message.channel.name}`);
   } catch (err) {

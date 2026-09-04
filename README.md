@@ -25,7 +25,7 @@ Containerized with **Docker** and hosted on **Render** (cloud). Active AI module
 - A Discord bot token ([Discord Developer Portal](https://discord.com/developers/applications))
 - An [OpenRouter](https://openrouter.ai/) API key (for music module AI) <-- Optional
 - A [Google AI](https://ai.google.dev/) API key (for RAG AI modules) <-- Better
-- An [Upstash Redis](https://upstash.com/) account (for `f_rag_quality_v1` and `f_rag_efficient_v1` cloud memory)
+- An [Upstash Redis](https://upstash.com/) account (used by `f_rag_quality_v1` for AI memory/rate limiting, and by `m_photoloc` for photo stats)
 - API keys for [TMDB](https://www.themoviedb.org/), [RAWG](https://rawg.io/apidocs), [NewsAPI](https://newsapi.org/), [Tavily](https://tavily.com/) (for RAG-like features)
 
 ---
@@ -57,7 +57,7 @@ RAWG_KEY=your_rawg_key
 NEWSAPI_KEY=your_newsapi_key
 TAVILY_API_KEY=your_tavily_key
 
-# Cloud DB (f_rag_quality_v1 only)
+# Cloud DB (f_rag_quality_v1 AI memory + m_photoloc stats)
 UPSTASH_REDIS_REST_URL=your_upstash_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_token
 ```
@@ -76,8 +76,10 @@ node launch.js
 | Command | Description |
 |---------|-------------|
 | `@bot <message>` | Chat with the AI (has per-user memory) |
-| `ai--clearmemo` | Clear your AI conversation history | 
+| `ai--memoclr` | Clear your AI conversation history |
 | `ai--memostat` | View your conversation statistics |
+| `ai--g ls\|-s\|-a\|-e\|-r` | Manage server-defined AI guidelines |
+| `ai--help` | AI-specific command help |
 
 ### Music Commands
 *(Must be in a voice channel)*
@@ -91,6 +93,13 @@ node launch.js
 | `-resume` | Resume playback |
 | `-queue` | Show the current queue |
 | `-nowplaying` | Show info about the current song |
+| `-loop [off\|song\|queue]` | Toggle loop mode |
+| `-volume <0-100>` | Set playback volume |
+| `-leave` | Disconnect the bot from voice |
+| `-search <query>` | Search SoundCloud and pick a track |
+| `-ask rec [song]` | Recommend similar songs (defaults to what's playing) |
+| `-ask desc [song]` | Get info about a song (defaults to what's playing) |
+| `-ask <question>` | General Q&A with the bot assistant (needs `GOOGLE_API_KEY`) |
 
 ### Photo Tracker Commands (Note: bot have to stay online 24/7)
 | Command | Description |
@@ -111,7 +120,7 @@ node launch.js
 ### General
 | Command | Description |
 |---------|-------------|
-| `--help` | List all available commands |
+| `--help` | Paginated command list (◀ / ▶ buttons, one page per module) |
 | `-uptime` | Show how long the bot has been online |
 
 ---
@@ -119,28 +128,30 @@ node launch.js
 ## Project Structure
 
 ```
-├── launch.js                      # Entry point — loads all modules
+├── launch.js                      # Entry point — loads all modules on the shared client
 ├── debug.js                       # Standalone API connection tester
-├── manual.js                      # Manual/utility helpers
+├── manual.js                      # Help command (paginated --help) and misc utilities
 ├── package.json
 ├── .env                           # Secret tokens (not committed)
 ├── bot_modules/
 │   ├── m_moderator.js             # Keyword trigger responses (copypastas)
-│   ├── m_extractor.js             # Server/user info and data export
-│   ├── m_music.js                 # Music playback (YT/Spotify/SoundCloud)
-│   ├── m_photoloc.js              # Image upload tracking (local SQLite ⚠️)
-│   └── m_insomnia.js              # Keep-alive pinger
+│   ├── m_extractor.js             # Server/user info and data export (runs its own Client)
+│   ├── m_music.js                 # Music playback (YT/Spotify/SoundCloud) + -ask bot assistant
+│   ├── m_photoloc.js              # Image upload tracking (Upstash Redis)
+│   └── m_insomnia.js              # Keep-alive pinger (currently disabled)
 ├── bot_experimental/
-│   ├── f_rag_efficient_v1.js      # ✅ ACTIVE — RAG AI, local SQLite memory
-│   └── f_rag_quality_v1.js        # Alt RAG AI, Upstash Redis memory + rate limiting
+│   └── f_rag_quality_v1.js        # Active AI module — Gemini + Upstash Redis memory/rate limiting
 ├── additional_modules/
-│   ├── a_insomnia_1.js            # Alt bot keep-alive (token 2)
-│   ├── a_insomnia_2.js            # Alt bot keep-alive (token 3)
-│   └── a_insomnia_3.js            # Alt bot keep-alive (token 4)
+│   ├── a_insomnia_1.js            # Alt bot keep-alive (token 2, currently disabled)
+│   ├── a_insomnia_2.js            # Alt bot keep-alive (token 3, currently disabled)
+│   └── a_insomnia_3.js            # Alt bot keep-alive (token 4, currently disabled)
 └── data/
-    └── db/
-        ├── conversations.db       # SQLite — AI chat memory (f_rag_efficient_v1)
-        └── photos.db              # SQLite — photo upload stats (m_photoloc)
+    ├── db/
+    │   └── redis_client.js        # Upstash Redis client, wrapped with a per-call timeout
+    └── utils/
+        ├── timeout.js             # withTimeout() — races a promise against a deadline
+        ├── retry.js               # withRetry() — retries a promise-returning fn on rejection
+        └── gemini.js              # askGemini() — shared Gemini model-fallback chain
 ```
 
 ---
@@ -150,12 +161,12 @@ node launch.js
 Currently loaded in `launch.js`:
 
 ```
-✅ m_moderator.js
-✅ m_extractor.js
-✅ m_music.js
-✅ f_rag_efficient_v1.js   ← active AI module
-❌ m_photoloc.js           (commented out)
-❌ f_rag_quality_v1.js     (commented out)
+✅ m_moderator.js          (shared client)
+✅ m_photoloc.js           (shared client)
+✅ manual.js               (shared client)
+✅ f_rag_quality_v1.js     (shared client) ← active AI module
+✅ m_music.js              (shared client)
+✅ m_extractor.js          (own Client — needs GuildMembers/GuildPresences intents)
 ❌ m_insomnia.js           (commented out)
 ❌ a_insomnia_*.js         (commented out)
 ```
@@ -225,28 +236,18 @@ User @mentions bot
          (chunked if > 2000 chars)
 ```
 
-### Key differences vs `f_rag_efficient_v1`
-
-| Feature | `f_rag_quality_v1` | `f_rag_efficient_v1` |
-|---|---|---|
-| Memory backend | Upstash Redis ☁️ | Upstash Redis ☁️ |
-| Rate limiting | ✅ Redis-based | Redis-based |
-| Channel context | ✅ Always fetched | ❌ Removed |
-| Tavily enrichment | Always on | Conditional (sparse results only) |
-| History limit | 20 messages | 15 messages |
-| Token usage | Higher (quality) | Lower (optimized) |
-
 ---
 
 ## Database Summary
 
-| Database | Module | Backend | Status |
-|---|---|---|---|
-| `hist:{userId}` | `f_rag_efficient_v1` | Upstash Redis ☁️ | ✅ Active |
-| `rl:{userId}` | `f_rag_efficient_v1` | Upstash Redis ☁️ | ✅ Active |
-| `photos.db` | `m_photoloc` | SQLite (local) | ✅ Active |
-| `hist:{userId}` | `f_rag_quality_v1` | Upstash Redis ☁️ | ⚠️ Module inactive |
-| `rl:{userId}` | `f_rag_quality_v1` | Upstash Redis ☁️ | ⚠️ Module inactive |
+Everything persistent is stored in Upstash Redis — nothing local, so state survives Render redeploys.
+
+| Key(s) | Module | Status |
+|---|---|---|
+| `hist:{userId}` | `f_rag_quality_v1` | ✅ Active |
+| `rl:{userId}` | `f_rag_quality_v1` | ✅ Active |
+| `bot:guidelines` | `f_rag_quality_v1` (`ai--g`) | ✅ Active |
+| `photo:user:*`, `photo:server:*`, `photo:channel:*`, `photo:lb:*` | `m_photoloc` | ✅ Active |
 
 ---
 
@@ -285,18 +286,15 @@ A few fixes worth knowing about if something looks slow or crashes unexpectedly:
 
 ## Planned Changes
 
-- [ ] Migrate `conversations.db` (SQLite) → Upstash Redis for cloud persistence
-- [ ] Migrate `photos.db` (SQLite) → Upstash Redis or another cloud DB
-- [ ] Unify all modules to use cloud DB so state persists across Render redeploys
-- [ ] Switch deployment on other cloud platform from Render, if possible 
+- [ ] Merge `m_extractor.js` onto the shared client once its privileged intents are confirmed enabled, to drop the second login/gateway connection
+- [ ] Replace each module's own raw `messageCreate` listener with a shared command registry, so adding a new module doesn't mean re-writing prefix parsing
 
 ---
 
 ## Notes
 
-- 'rag_location_v1' and a few archived ai module memory is currently stored in `conversations.db` (SQLite, local — resets on Render redeploy).
-- Photo stats are stored in `photos.db` (SQLite, local — same caveat).
-- `rag_quality_v1` and `rag_efficient_v1` uses Upstash Redis and survives redeploys, but is currently commented out in `launch.js`.
+- All persistent state (AI memory, rate limits, guidelines, photo stats) lives in Upstash Redis, so it survives Render redeploys — there's no local SQLite storage in the active codebase.
+- Earlier experimental AI variants (`f_rag_efficient_v1`, `f_rag_location_v1`, and the archived `f_ai_bot*` files) were never loaded by `launch.js` and have been removed; `f_rag_quality_v1` is the only AI module.
 
 ---
 

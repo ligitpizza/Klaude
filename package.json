@@ -13,9 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@discordjs/builders": "^1.11.2",
     "@discordjs/opus": "^0.10.0",
-    "@discordjs/rest": "^0.4.1",
     "@discordjs/voice": "^0.19.0",
     "@distube/soundcloud": "^2.0.4",
     "@distube/spotify": "^2.0.2",
@@ -38,12 +36,8 @@
     "node-fetch": "^2.7.0",
     "openai": "^5.0.2",
     "opusscript": "^0.0.8",
-    "play-dl": "^1.9.7",
     "sodium-native": "^5.0.10",
-    "soundcloud-downloader": "^1.0.0",
-    "spotify-url-info": "^3.3.0",
-    "sqlite3": "^5.1.7",
-    "yt-search": "^2.13.1"
+    "spotify-url-info": "^3.3.0"
   },
   "description": "A multi-module Discord bot with RAG-like AI chat, music, and server utilities, containerized with Docker and hosted on Render.",
   "repository": {
