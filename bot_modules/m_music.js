@@ -13,11 +13,35 @@ const ffmpeg  = process.env.FFMPEG_PATH || require("@ffmpeg-installer/ffmpeg").p
 let distube;
 let soundcloudPlugin;
 
+// soundcloud.ts scrapes a public client_id from soundcloud.com once and caches
+// it forever. When SoundCloud rotates/revokes that id (or rejects the one
+// served to a datacenter IP like Render's) every API call returns 401 and the
+// library never recovers until the process restarts. Re-scrape and retry once.
+function enableClientIdRefresh(api) {
+  const original = api.fetchRequest;
+  api.fetchRequest = async (url, method, params) => {
+    try {
+      return await original(url, method, params);
+    } catch (err) {
+      if (api.oauthToken || !/Status code (401|403)/.test(err.message)) throw err;
+      console.warn(`SoundCloud ${err.message}; refreshing client ID and retrying`);
+      await api.getClientId(true);
+      return original(url, method, params);
+    }
+  };
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function initMusic(client) {
   console.log("ffmpeg path:", ffmpeg);
 
-  soundcloudPlugin = new SoundCloudPlugin();
+  // Optional: pin your own SoundCloud client id / OAuth token (see README) if
+  // the auto-scraped one keeps getting rejected on the host.
+  soundcloudPlugin = new SoundCloudPlugin({
+    ...(process.env.SOUNDCLOUD_CLIENT_ID && { clientId: process.env.SOUNDCLOUD_CLIENT_ID }),
+    ...(process.env.SOUNDCLOUD_OAUTH_TOKEN && { oauthToken: process.env.SOUNDCLOUD_OAUTH_TOKEN }),
+  });
+  enableClientIdRefresh(soundcloudPlugin.soundcloud.api);
 
   distube = new DisTube(client, {
     ffmpeg: { path: ffmpeg },

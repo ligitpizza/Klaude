@@ -57,6 +57,11 @@ RAWG_KEY=your_rawg_key
 NEWSAPI_KEY=your_newsapi_key
 TAVILY_API_KEY=your_tavily_key
 
+# Optional: SoundCloud. Normally auto-detected and auto-refreshed on 401; set
+# these only if the host keeps getting "Status code 401" from SoundCloud.
+# SOUNDCLOUD_CLIENT_ID=your_client_id
+# SOUNDCLOUD_OAUTH_TOKEN=your_oauth_token
+
 # Cloud DB (f_rag_quality_v1 AI memory + m_photoloc stats)
 UPSTASH_REDIS_REST_URL=your_upstash_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_token
