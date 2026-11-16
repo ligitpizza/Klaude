@@ -17,6 +17,14 @@ class FakeRedis {
   async hgetall(k) { this._tick(); const h = this.store.get(k); return h && h.size ? Object.fromEntries(h) : null; }
   async hdel(k, ...f) { this._tick(); const h = this.store.get(k); let n = 0; for (const x of f.flat()) if (h?.delete(x)) n++; return n; }
   async hlen(k) { this._tick(); return this.store.get(k)?.size ?? 0; }
+  async incr(k) { this._tick(); const v = Number(this.store.get(k) || 0) + 1; this.store.set(k, v); return v; }
+  async expire() { this._tick(); return 1; }
+  async ttl() { this._tick(); return 60; }
+  _list(k) { if (!this.store.has(k)) this.store.set(k, []); return this.store.get(k); }
+  async lpush(k, ...v) { this._tick(); const l = this._list(k); l.unshift(...v.reverse()); return l.length; }
+  async ltrim(k, a, b) { this._tick(); this.store.set(k, this._list(k).slice(a, b + 1)); return "OK"; }
+  async lrange(k, a, b) { this._tick(); return this._list(k).slice(a, b + 1); }
+  async llen(k) { this._tick(); return this._list(k).length; }
 }
 
 const words = (s) => new Set(String(s).toLowerCase().match(/[a-z0-9]+/g) || []);
@@ -36,7 +44,8 @@ function matchesFilter(meta, filter) {
 }
 
 class FakeVector {
-  constructor() { this.ns = new Map(); this.calls = []; this._fail = null; }
+  // fixedScore: every match gets this score (for tests of code above the cut-off)
+  constructor({ fixedScore = null } = {}) { this.ns = new Map(); this.calls = []; this._fail = null; this.fixedScore = fixedScore; }
   failNext(err = new Error("vector down")) { this._fail = err; }
   failAlways(err = new Error("vector down")) { this._failAlways = err; }
   _check(method, ns) {
@@ -54,7 +63,8 @@ class FakeVector {
       .map(it => {
         const w = words(it.data);
         const shared = [...q].filter(x => w.has(x)).length;
-        return { id: it.id, score: shared / Math.max(q.size, w.size, 1), metadata: it.metadata };
+        const score = this.fixedScore ?? shared / Math.max(q.size, w.size, 1);
+        return { id: it.id, score, metadata: it.metadata };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
