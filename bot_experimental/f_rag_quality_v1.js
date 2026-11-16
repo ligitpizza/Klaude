@@ -7,7 +7,9 @@ const redis = require("../data/db/redis_client.js");
 const { withRetry } = require("../data/utils/retry.js");
 const { askGemini, askGeminiWithModel } = require("../data/utils/gemini.js");
 const { splitWithLabel, modelLabel } = require("../data/utils/discord_text.js");
-const { buildCommandGuide, mentionsCommands } = require("../data/commands.js");
+const { COMMANDS, buildCommandGuide, mentionsCommands } = require("../data/commands.js");
+const { vector } = require("../data/db/vector_client.js");
+const knowledge = require("../data/rag/knowledge_sync.js");
 
 // Built once at load — the registry is static, so there's no need to redo it per message.
 const COMMAND_GUIDE = buildCommandGuide();
@@ -597,11 +599,20 @@ async function saveGuidelines(guidelines) {
   await redis.set(GUIDELINES_KEY, JSON.stringify(guidelines));
 }
  
+// Vector index updates for guidelines: logged, never thrown — a vector
+// outage must not break the ai--g commands.
+async function vectorSafe(label, fn) {
+  if (!vector) return;
+  try { await fn(); } catch (err) { console.error(`Vector ${label} failed:`, err.message); }
+}
+
 async function addGuideline(name, content) {
   const guidelines = await getGuidelines();
   const id = Date.now().toString(36); // short unique id
-  guidelines.push({ id, name: name.trim(), content: content.trim() });
+  const g = { id, name: name.trim(), content: content.trim() };
+  guidelines.push(g);
   await saveGuidelines(guidelines);
+  await vectorSafe("guideline upsert", () => knowledge.upsertGuideline(vector, g));
   return id;
 }
  
@@ -611,6 +622,7 @@ async function editGuideline(id, content) {
   if (idx === -1) return false;
   guidelines[idx].content = content.trim();
   await saveGuidelines(guidelines);
+  await vectorSafe("guideline upsert", () => knowledge.upsertGuideline(vector, guidelines[idx]));
   return true;
 }
  
@@ -619,7 +631,16 @@ async function removeGuideline(id) {
   const filtered = guidelines.filter(g => g.id !== id);
   if (filtered.length === filtered.length && guidelines.length === filtered.length) return false; // nothing removed
   await saveGuidelines(filtered);
+  await vectorSafe("guideline remove", () => knowledge.removeGuideline(vector, id));
   return filtered.length < guidelines.length;
+}
+
+// Returns the new pinned state, or null when the id doesn't exist.
+async function togglePin(id) {
+  const guidelines = await getGuidelines();
+  const state = knowledge.togglePinned(guidelines, id);
+  if (state !== null) await saveGuidelines(guidelines);
+  return state;
 }
  
 async function buildGuidelinesBlock() {
@@ -635,12 +656,22 @@ async function buildGuidelinesBlock() {
 
 function initRagQuality(client) {
 
-client.once("ready", () => {
+client.once("ready", async () => {
   try {
     console.log(`✅Logged in as ${client.user.tag}, v3.1 (Redis + rate limit)`);
   } catch (err) {
     console.error('Error fetching creator user:', err);
   }
+  if (!vector) {
+    console.log('Upstash Vector not configured — using full command guide and all guidelines');
+    return;
+  }
+  await vectorSafe("command sync", async () => {
+    console.log(`Vector commands: ${await knowledge.syncCommands({ vector, redis, commands: COMMANDS })}`);
+  });
+  await vectorSafe("guideline sync", async () => {
+    await knowledge.syncGuidelines({ vector, guidelines: await getGuidelines() });
+  });
 });
 
 process.on('SIGINT', async () => {
@@ -721,7 +752,7 @@ client.on("messageCreate", async (message) => {
           .setTitle("Guidelines")
           .setDescription("No guidelines stored yet.")],
       });
-      const lines = guidelines.map(g => `\`${g.id}\` **${g.name}** — ${g.content.slice(0, 80)}${g.content.length > 80 ? '...' : ''}`);
+      const lines = guidelines.map(g => `${g.pinned ? '📌 ' : ''}\`${g.id}\` **${g.name}** — ${g.content.slice(0, 80)}${g.content.length > 80 ? '...' : ''}`);
       return await message.reply({
         embeds: [new EmbedBuilder()
           .setColor("#282d2f")
@@ -821,6 +852,26 @@ client.on("messageCreate", async (message) => {
       });
     }
  
+    // PIN / UNPIN — pinned guidelines always apply, whatever the search finds
+    if (sub === '-p') {
+      const id = rest[0];
+      if (!id) return await message.reply({
+        embeds: [new EmbedBuilder().setColor("#282d2f").setTitle("Correct Usage:").setDescription("`ai--g -p <id>`")],
+      });
+      const pinned = await togglePin(id);
+      return await message.reply({
+        embeds: [new EmbedBuilder()
+          .setColor("#282d2f")
+          .setTitle(pinned === null ? "Invalid Commands:" : pinned ? "📌 Pinned" : "Unpinned")
+          .setDescription(pinned === null
+            ? `No guideline found with id \`${id}\`.`
+            : pinned
+              ? `Guideline \`${id}\` now always applies.`
+              : `Guideline \`${id}\` now applies only when it's relevant.`)
+          .setFooter({ text: `By ${userName}` })],
+      });
+    }
+
     // HELP fallback
     return await message.reply({
       embeds: [new EmbedBuilder()
@@ -835,6 +886,7 @@ client.on("messageCreate", async (message) => {
               "`ai--g -a <name> - <content>` Add a guideline",
               "`ai--g -e <id> - <content>` Edit a guideline",
               "`ai--g -r <id>` Remove a guideline",
+              "`ai--g -p <id>` Pin/unpin a guideline so it always applies",
             ].join("\n"),
             inline: false,
           },

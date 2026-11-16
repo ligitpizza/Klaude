@@ -39,6 +39,7 @@ const COMMANDS = [
   { cmd: "ai--g -a",      usage: "ai--g -a <name> - <content>",   desc: "Add a guideline", group: "guide", sub: true },
   { cmd: "ai--g -e",      usage: "ai--g -e <id> - <content>",     desc: "Edit a guideline", group: "guide", sub: true },
   { cmd: "ai--g -r",      usage: "ai--g -r <id>",                 desc: "Remove a guideline", group: "guide", sub: true },
+  { cmd: "ai--g -p",      usage: "ai--g -p <id>",                 desc: "Pin/unpin a guideline so it always applies", group: "guide", sub: true },
 
   // ── Keyword control ──
   { cmd: "-ton",          usage: "-ton",                  desc: "Enable keyword control", group: "keyword" },
