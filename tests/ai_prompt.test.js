@@ -12,7 +12,9 @@ const stub = (rel, exports) => {
   require.cache[file] = { id: file, filename: file, loaded: true, exports };
 };
 
-function loadBot({ vector }) {
+// fetchImpl: optional fake for node-fetch (web searches). askGemini: optional
+// fake for the small internal calls (intent classifier, query cleaner).
+function loadBot({ vector, fetchImpl = null, askGemini = async () => "none" }) {
   for (const k of Object.keys(require.cache)) if (k.includes(`${path.sep}bot_experimental${path.sep}`)) delete require.cache[k];
   const redis = new FakeRedis();
   const prompts = [];
@@ -20,8 +22,12 @@ function loadBot({ vector }) {
   const answers = [];
   stub("data/db/redis_client.js", redis);
   stub("data/db/vector_client.js", { vector, createVectorClient: () => vector });
+  if (fetchImpl) {
+    const file = require.resolve("node-fetch", { paths: [root] });
+    require.cache[file] = { id: file, filename: file, loaded: true, exports: fetchImpl };
+  }
   stub("data/utils/gemini.js", {
-    askGemini: async () => "none", // intent classifier → no web search
+    askGemini, // "none" by default → no web search
     askGeminiWithModel: async (messages) => { prompts.push(messages[0].content); calls.push(messages); return { text: answers.shift() || "Saturday, in #general.", model: "gemini-test" }; },
   });
   const { initRagQuality } = require(path.join(root, "bot_experimental/f_rag_quality_v1.js"));
@@ -119,4 +125,43 @@ test("C1: an answer that used #mod-chat memory isn't replayed when the same user
   const history = generalCall.slice(1).map(m => m.content).join("\n");
   assert.doesNotMatch(history, /SECRET/);
   assert.doesNotMatch(generalCall[0].content, /SECRET/);
+});
+
+// ── question routing ─────────────────────────────────────────────────────────
+const isClassifier = (messages) => /intent classifier/.test(messages[0].content);
+
+test("the intent classifier runs at temperature 0, so a question always takes the same route", async () => {
+  const seen = [];
+  const { handlers, client } = loadBot({
+    vector: null,
+    askGemini: async (messages, opts) => { if (isClassifier(messages)) seen.push(opts); return "none"; },
+  });
+  const general = fakeChannel({ id: "100", name: "general" });
+  await handlers["once:ready"]();
+  await ask(handlers, client, { channel: general, guild: fakeGuild("1", [general]), content: "@wes hello there friend" });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]?.temperature, 0);
+});
+
+test("news questions get a Tavily web search alongside NewsAPI headlines", async () => {
+  const urls = [];
+  const fetchImpl = async (url) => {
+    urls.push(String(url));
+    const body = String(url).includes("newsapi.org")
+      ? { articles: [{ title: "GTA 6 hype builds", description: "Fans wait.", url: "https://news.example/gta" }] }
+      : { answer: "The Game Awards 2026 takes place on December 10.", results: [] };
+    return { ok: true, status: 200, json: async () => body, text: async () => "" };
+  };
+  const { handlers, prompts, client } = loadBot({
+    vector: null,
+    fetchImpl,
+    askGemini: async (messages) => (isClassifier(messages) ? "news" : "game awards 2026 date"),
+  });
+  const general = fakeChannel({ id: "100", name: "general" });
+  await handlers["once:ready"]();
+  await ask(handlers, client, { channel: general, guild: fakeGuild("1", [general]), content: "@wes 2026 game of the year award ceremony when?" });
+  const prompt = prompts.at(-1);
+  assert.match(prompt, /GTA 6 hype builds/, "NewsAPI headlines kept");
+  assert.match(prompt, /December 10/, "Tavily answer added");
+  assert.ok(urls.some(u => u.includes("tavily")), "Tavily was called");
 });

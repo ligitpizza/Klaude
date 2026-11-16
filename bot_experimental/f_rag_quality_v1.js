@@ -178,8 +178,10 @@ async function buildSearchQuery(rawQuery) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Tavily ────────────────────────────────────────────────────────────────────
-async function searchTavily(rawQuery) {
-  const query = await buildSearchQuery(rawQuery);
+// cleanedQuery: pass it when the caller already cleaned the query, to skip a
+// second AI cleaner call.
+async function searchTavily(rawQuery, cleanedQuery = null) {
+  const query = cleanedQuery || await buildSearchQuery(rawQuery);
   try {
     console.log(`🔍 Tavily searching: ${query}`);
     const response = await fetch("https://api.tavily.com/search", {
@@ -276,31 +278,37 @@ async function enrichWithTavily(primaryResult, userQuery) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── NewsAPI ───────────────────────────────────────────────────────────────────
+// NewsAPI only matches headlines, so its articles often mention the topic
+// without answering the question (e.g. a ceremony date). A Tavily web search
+// runs alongside it, and the two results are combined.
 async function searchNews(rawQuery) {
   const query = await buildSearchQuery(rawQuery);
-  try {
-    console.log(`📰 NewsAPI searching: ${query}`);
-    const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=5&apiKey=${process.env.NEWSAPI_KEY}`;
-    const response = await fetch(url, { timeout: FETCH_TIMEOUT_MS });
-    if (!response.ok) throw new Error('NewsAPI failed');
-    const data = await response.json();
-    if (!data.articles?.length) throw new Error('NewsAPI returned no articles');
 
-    const parts = ['**Latest News:**'];
-    data.articles.slice(0, 4).forEach(a => {
-      parts.push(`• **${a.title}**\n${a.description?.slice(0, 150) || 'No description'}...\n🔗 ${a.url}`);
-    });
-    const result = parts.join('\n\n').trim();
-    console.log(`📰 NewsAPI returned ${result.length} chars`);
-    return result;
+  const newsApi = (async () => {
+    try {
+      console.log(`📰 NewsAPI searching: ${query}`);
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=5&apiKey=${process.env.NEWSAPI_KEY}`;
+      const response = await fetch(url, { timeout: FETCH_TIMEOUT_MS });
+      if (!response.ok) throw new Error('NewsAPI failed');
+      const data = await response.json();
+      if (!data.articles?.length) throw new Error('NewsAPI returned no articles');
 
-  } catch (err) {
-    console.warn(`NewsAPI failed (${err.message}), trying Tavily fallback...`);
-    const tavilyResult = await searchTavily(rawQuery);
-    if (tavilyResult) return tavilyResult;
-    console.warn('📰 News: both NewsAPI and Tavily failed');
-    return null;
-  }
+      const parts = ['**Latest News:**'];
+      data.articles.slice(0, 4).forEach(a => {
+        parts.push(`• **${a.title}**\n${a.description?.slice(0, 150) || 'No description'}...\n🔗 ${a.url}`);
+      });
+      const result = parts.join('\n\n').trim();
+      console.log(`📰 NewsAPI returned ${result.length} chars`);
+      return result;
+    } catch (err) {
+      console.warn(`NewsAPI failed (${err.message})`);
+      return null;
+    }
+  })();
+
+  const [news, web] = await Promise.all([newsApi, searchTavily(rawQuery, query)]);
+  if (!news && !web) console.warn('📰 News: both NewsAPI and Tavily failed');
+  return [news, web].filter(Boolean).join('\n\n') || null;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -513,8 +521,8 @@ async function searchSimilarGames(gameName) {
 // ── Gemini ────────────────────────────────────────────────────────────────────
 // Model fallback chain lives in data/utils/gemini.js, shared with the music
 // module's -ask command so both use the same fallback/timeout logic.
-async function fetchFromAny(messages) {
-  return askGemini(messages);
+async function fetchFromAny(messages, opts) {
+  return askGemini(messages, opts);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 const gamenews = 'asking about gaming news, game announcements, upcoming releases buzz, gaming industry updates.'
@@ -538,7 +546,9 @@ Reply with ONLY the category word, nothing else.`
     { role: "user", content: userInput }
   ];
 
-  const result = await fetchFromAny(messages);
+  // Temperature 0: the same question must always take the same route
+  // (news vs game vs …), whichever backup model happens to answer.
+  const result = await fetchFromAny(messages, { temperature: 0 });
   const category = result?.toLowerCase().trim();
   console.log(`🤖 Intent: "${category}"`);
   // FIX 1: valid array now includes gamenews and technews
