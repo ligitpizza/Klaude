@@ -708,7 +708,7 @@ client.on("messageCreate", async (message) => {
       return await message.reply({
         embeds: [new EmbedBuilder().setColor("#282d2f").setTitle("Chat memory")
           .setDescription("Chat memory isn't configured on this bot (Upstash Vector keys are missing).")],
-      });
+      }).catch(err => console.error("ai--index reply failed:", err.message));
     }
     return await handleIndexCommand(message, { indexed: indexedChannels, store: chatStore, ingest: chatIngest });
   }
@@ -1066,8 +1066,11 @@ client.on("messageCreate", async (message) => {
 
     // Label goes on the last piece so people can see which model answered.
     const pieces = splitWithLabel(reply, modelLabel(answer.model));
-    await message.reply(pieces[0]);
-    for (let i = 1; i < pieces.length; i++) await message.channel.send(pieces[i]);
+    // Retrieved chat can contain @everyone or role mentions; never let the
+    // model's echo of them ping anyone (the asker still gets the reply ping).
+    const allowedMentions = { parse: [], repliedUser: true };
+    await message.reply({ content: pieces[0], allowedMentions });
+    for (let i = 1; i < pieces.length; i++) await message.channel.send({ content: pieces[i], allowedMentions });
 
   } catch (error) {
     console.error("Error:", error.message);
