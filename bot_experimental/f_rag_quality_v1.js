@@ -12,7 +12,8 @@ const { vector } = require("../data/db/vector_client.js");
 const knowledge = require("../data/rag/knowledge_sync.js");
 const { ChunkBuffer } = require("../data/rag/chunker.js");
 const { createChatStore } = require("../data/rag/chat_store.js");
-const { createIndexedChannels, allowedSources } = require("../data/rag/channels.js");
+const { createIndexedChannels, allowedSources, isPublicChannel } = require("../data/rag/channels.js");
+const { historyEntry, visibleHistory } = require("../data/rag/history.js");
 const { retrieveContext, buildPromptBlocks } = require("../data/rag/retrieve.js");
 const { createIngest, initChatIngest, handleIndexCommand } = require("../data/rag/ingest.js");
 
@@ -53,14 +54,15 @@ const MAX_HISTORY = 20;
 // ── Conversation memory ───────────────────────────────────────────────────────
 const HISTORY_KEY = (id) => `hist:${id}`;
 
-async function getConversationHistory(userId) {
+// Only lines said in this channel or in public channels — see data/rag/history.js.
+async function getConversationHistory(userId, channelId) {
   const raw = await redis.lrange(HISTORY_KEY(userId), 0, MAX_HISTORY - 1);
-  return raw.map(r => (typeof r === "string" ? JSON.parse(r) : r)).reverse();
+  return visibleHistory(raw.map(r => (typeof r === "string" ? JSON.parse(r) : r)).reverse(), channelId);
 }
 
-async function addToConversationHistory(userId, role, content) {
+async function addToConversationHistory(userId, role, content, where) {
   const key = HISTORY_KEY(userId);
-  await redis.lpush(key, JSON.stringify({ role, content }));
+  await redis.lpush(key, JSON.stringify(historyEntry(role, content, where)));
   await redis.ltrim(key, 0, MAX_HISTORY - 1);
   await redis.expire(key, 60 * 60 * 24 * 7); // auto-delete after 7 days of no new messages 
   // so active users never lose history, but inactive users get cleaned up automatically.
@@ -957,7 +959,7 @@ client.on("messageCreate", async (message) => {
     console.log(`Processing message from ${userName} (${userId})`);
 
     const [conversationHistory, channelContext, allGuidelines] = await Promise.all([
-      getConversationHistory(userId),
+      getConversationHistory(userId, message.channel.id),
       getChannelContext(message.channel),
       getGuidelines(),
     ]);
@@ -1057,8 +1059,9 @@ client.on("messageCreate", async (message) => {
     }
 
     try {
-      await addToConversationHistory(userId, "user", userInput);
-      await addToConversationHistory(userId, "assistant", reply);
+      const where = { channelId: message.channel.id, pub: isPublicChannel(message.channel, message.guild) };
+      await addToConversationHistory(userId, "user", userInput, where);
+      await addToConversationHistory(userId, "assistant", reply, where);
       console.log(`Saved conversation for ${userName}`);
       console.log(`------------------------------------------------------------ {Log: ${LOG_COUNTER}}`);
     } catch (dbError) {

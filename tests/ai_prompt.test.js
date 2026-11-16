@@ -16,17 +16,19 @@ function loadBot({ vector }) {
   for (const k of Object.keys(require.cache)) if (k.includes(`${path.sep}bot_experimental${path.sep}`)) delete require.cache[k];
   const redis = new FakeRedis();
   const prompts = [];
+  const calls = [];
+  const answers = [];
   stub("data/db/redis_client.js", redis);
   stub("data/db/vector_client.js", { vector, createVectorClient: () => vector });
   stub("data/utils/gemini.js", {
     askGemini: async () => "none", // intent classifier → no web search
-    askGeminiWithModel: async (messages) => { prompts.push(messages[0].content); return { text: "Saturday, in #general.", model: "gemini-test" }; },
+    askGeminiWithModel: async (messages) => { prompts.push(messages[0].content); calls.push(messages); return { text: answers.shift() || "Saturday, in #general.", model: "gemini-test" }; },
   });
   const { initRagQuality } = require(path.join(root, "bot_experimental/f_rag_quality_v1.js"));
   const handlers = {};
   const client = { user: { id: "bot", tag: "bot#1" }, once(e, f) { handlers[`once:${e}`] = f; }, on(e, f) { (handlers[e] ||= []).push(f); }, guilds: { cache: { map: () => ["1"] } } };
   initRagQuality(client);
-  return { handlers, prompts, redis, client };
+  return { handlers, prompts, calls, answers, redis, client };
 }
 
 function ask(handlers, client, { channel, guild, content = "@wes what did we decide about the minecraft map", memberId = "alice" }) {
@@ -97,4 +99,22 @@ test("with no vector client the full command guide and all guidelines are used",
   assert.match(prompt, /-search <query>/);
   assert.match(prompt, /- \[Tone\] be kind/);
   assert.doesNotMatch(prompt, /Past conversations/);
+});
+
+test("C1: an answer that used #mod-chat memory isn't replayed when the same user asks in #general", async () => {
+  const vector = new FakeVector({ fixedScore: 0.9 });
+  const { handlers, calls, answers, redis, client } = loadBot({ vector });
+  await redis.sadd("rag:indexed:1", "100", "500");
+  const general = fakeChannel({ id: "100", name: "general" });
+  const modChat = fakeChannel({ id: "500", name: "mod-chat", everyoneCanView: false, viewers: new Set(["alice"]) });
+  const guild = fakeGuild("1", [general, modChat]);
+  await handlers["once:ready"]();
+  await seed(vector);
+  answers.push("Mods agreed: SECRET plan is a go.");
+  await ask(handlers, client, { channel: modChat, guild });
+  await ask(handlers, client, { channel: general, guild, content: "@wes remind me what we said?" });
+  const generalCall = calls.at(-1);
+  const history = generalCall.slice(1).map(m => m.content).join("\n");
+  assert.doesNotMatch(history, /SECRET/);
+  assert.doesNotMatch(generalCall[0].content, /SECRET/);
 });

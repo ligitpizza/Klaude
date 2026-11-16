@@ -47,6 +47,15 @@ function storageTarget(channel) {
 
 const canView = (channel, who) => Boolean(channel.permissionsFor(who)?.has(PermissionFlagsBits.ViewChannel));
 
+// True when @everyone can read the channel (threads: their parent; private
+// threads never count as public).
+function isPublicChannel(channel, guild) {
+  if (!channel || !guild) return false;
+  if (channel.type === ChannelType.PrivateThread) return false;
+  const base = PUBLIC_THREADS.has(channel.type) && channel.parent ? channel.parent : channel;
+  return canView(base, guild.roles.everyone);
+}
+
 // The reply is read by everyone in the ask channel, not just the asker. So:
 //   - the ask channel's own memory is fine (same audience), and
 //   - other channels only when @everyone can view them (and the asker can).
@@ -61,4 +70,4 @@ function allowedSources({ guild, askChannel, member, indexed }) {
   return { switchIds, askKey };
 }
 
-module.exports = { createIndexedChannels, storageTarget, allowedSources };
+module.exports = { createIndexedChannels, storageTarget, allowedSources, isPublicChannel };
