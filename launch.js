@@ -26,7 +26,7 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 app.get("/", (req, res) => res.send("wes is running!"));
 
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, Partials } = require("discord.js");
 
 const client = new Client({
   intents: [
@@ -35,6 +35,9 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
   ],
+  // Edits/deletes of messages sent before a restart arrive as partials; chat
+  // memory only needs their ids to update what it stored.
+  partials: [Partials.Message, Partials.Channel],
 });
 
 const PREFIX = "-"; // ← moved up so it's defined before use

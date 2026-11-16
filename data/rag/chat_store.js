@@ -1,7 +1,9 @@
 const { chunkText, MAX_CONTENT } = require("./chunker.js");
 
 const CHAT_NS = "chat";
-const MAP_KEY = (key) => `rag:map:${key}`;
+// One hash per ai--index switch (channel + its threads): message id → chunk id.
+// Snowflake ids are globally unique, so threads can share the parent's hash.
+const MAP_KEY = (switchId) => `rag:map:${switchId}`;
 // Discord ids are digit-only snowflakes; anything else never goes into a filter.
 const isId = (s) => /^\d+$/.test(String(s));
 
@@ -31,19 +33,19 @@ const fromMetadata = (id, md) => ({
 function createChatStore({ vector, redis }) {
   async function saveChunk(chunk) {
     await vector.upsert(CHAT_NS, [toVector(chunk)]);
-    await redis.hset(MAP_KEY(chunk.key), Object.fromEntries(chunk.messages.map(m => [m.id, chunk.id])));
+    await redis.hset(MAP_KEY(chunk.switchId), Object.fromEntries(chunk.messages.map(m => [m.id, chunk.id])));
   }
 
   // Loads the stored chunk holding this message, or null.
-  async function load(key, messageId) {
-    const chunkId = await redis.hget(MAP_KEY(key), messageId);
+  async function load(switchId, messageId) {
+    const chunkId = await redis.hget(MAP_KEY(switchId), messageId);
     if (!chunkId) return null;
     const [hit] = await vector.fetch(CHAT_NS, [chunkId]);
     return hit ? fromMetadata(chunkId, hit.metadata) : null;
   }
 
-  async function editMessage(key, messageId, content) {
-    const chunk = await load(key, messageId);
+  async function editMessage(switchId, messageId, content) {
+    const chunk = await load(switchId, messageId);
     const m = chunk?.messages.find(x => x.id === messageId);
     if (!m) return false;
     m.content = String(content).slice(0, MAX_CONTENT);
@@ -51,29 +53,30 @@ function createChatStore({ vector, redis }) {
     return true;
   }
 
-  async function deleteMessage(key, messageId) {
-    const chunk = await load(key, messageId);
+  async function deleteMessage(switchId, messageId) {
+    const chunk = await load(switchId, messageId);
     if (!chunk) return false;
     chunk.messages = chunk.messages.filter(x => x.id !== messageId);
     if (chunk.messages.length) await vector.upsert(CHAT_NS, [toVector(chunk)]);
     else await vector.remove(CHAT_NS, [chunk.id]);
-    await redis.hdel(MAP_KEY(key), messageId);
+    await redis.hdel(MAP_KEY(switchId), messageId);
     return true;
   }
 
-  async function chunkIds(key) {
-    const map = await redis.hgetall(MAP_KEY(key));
+  async function chunkIds(switchId) {
+    const map = await redis.hgetall(MAP_KEY(switchId));
     return [...new Set(Object.values(map || {}))];
   }
 
-  async function deleteChannel(key) {
-    const ids = await chunkIds(key);
+  // Removes the channel's chunks and its threads' chunks.
+  async function deleteChannel(switchId) {
+    const ids = await chunkIds(switchId);
     await vector.remove(CHAT_NS, ids);
-    await redis.del(MAP_KEY(key));
+    await redis.del(MAP_KEY(switchId));
     return ids.length;
   }
 
-  const countChunks = async (key) => (await chunkIds(key)).length;
+  const countChunks = async (switchId) => (await chunkIds(switchId)).length;
 
   // switchIds: public indexed channels (their threads included, via switchId).
   // askKey: the channel/thread being asked in, if it's indexed.

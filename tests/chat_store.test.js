@@ -61,6 +61,24 @@ test("deleteChannel removes only that channel's chunks and returns the count", a
   assert.equal(await store.countChunks("100"), 0);
 });
 
+test("deleteChannel also removes chunks from that channel's threads", async () => {
+  const { store, vector } = setup();
+  await store.saveChunk(minecraft());
+  await store.saveChunk(chunk({ key: "300", switchId: "100", lines: [["31", "eve", "thread chat"]] }));
+  assert.equal(await store.countChunks("100"), 2);
+  assert.equal(await store.deleteChannel("100"), 2);
+  assert.deepEqual(vector.ids("chat"), []);
+});
+
+test("edits and deletes in a thread are found through the parent's switch", async () => {
+  const { store, vector } = setup();
+  await store.saveChunk(chunk({ key: "300", switchId: "100", lines: [["31", "eve", "old"], ["32", "eve", "keep"]] }));
+  assert.equal(await store.editMessage("100", "31", "new"), true);
+  assert.match(vector.get("chat", "300:31").data, /new/);
+  assert.equal(await store.deleteMessage("100", "32"), true);
+  assert.doesNotMatch(vector.get("chat", "300:31").data, /keep/);
+});
+
 test("search with nothing allowed makes no vector call", async () => {
   const { store, vector } = setup();
   vector.calls.length = 0;

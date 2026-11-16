@@ -32,6 +32,8 @@ const COMMANDS = [
   { cmd: "ai--help",      usage: "ai--help",              desc: "Show AI-specific help", group: "ai" },
   { cmd: "ai--memoclr",   usage: "ai--memoclr",           desc: "Clear your AI chat memory", group: "ai" },
   { cmd: "ai--memostat",  usage: "ai--memostat",          desc: "View your conversation stats", group: "ai" },
+  { cmd: "ai--index",     usage: "ai--index on|off|status", desc: "Turn chat memory on/off for this channel, or check it", group: "ai",
+    note: "on/off need Manage Channels. Only new messages are remembered; off deletes what was stored." },
 
   // ── Custom guidelines (all are subcommands of ai--g) ──
   { cmd: "ai--g",         usage: "ai--g ls",                      desc: "List all guidelines", group: "guide" },
@@ -145,7 +147,7 @@ const stripPrefix = s => s.replace(PREFIX_RE, "");
 // These handlers match with startsWith(), so e.g. "-photostats" or
 // "ai--guide" already run the real command. Never "correct" those.
 const STARTS_WITH_HANDLED = [
-  "ai--g", "-photostat", "-channelstat",
+  "ai--g", "ai--index", "-photostat", "-channelstat",
   "--userid", "--userinfo", "--track", "--stk", "--analyze", "--permissions",
 ];
 

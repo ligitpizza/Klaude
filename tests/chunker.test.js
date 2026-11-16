@@ -98,6 +98,15 @@ test("discard drops a channel's open chunk", () => {
   assert.deepEqual(b.drain().map(c => c.key), ["c2"]);
 });
 
+test("discardSwitch drops the channel's and its threads' open chunks only", () => {
+  const b = new ChunkBuffer();
+  b.add({ key: "c1", switchId: "c1", guildId: "g1", channelName: "general" }, msg("m1", 0));
+  b.add({ key: "t1", switchId: "c1", guildId: "g1", channelName: "general › t" }, msg("m2", 0));
+  b.add({ key: "c2", switchId: "c2", guildId: "g1", channelName: "other" }, msg("m3", 0));
+  b.discardSwitch("c1");
+  assert.deepEqual(b.drain().map(c => c.key), ["c2"]);
+});
+
 test("channels buffer independently", () => {
   const b = new ChunkBuffer();
   b.add(target("c1"), msg("a1", 0));

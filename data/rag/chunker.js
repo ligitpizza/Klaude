@@ -62,6 +62,11 @@ class ChunkBuffer {
 
   discard(key) { this.open.delete(key); }
 
+  // For ai--index off: the channel's open chunk and its threads' open chunks.
+  discardSwitch(switchId) {
+    for (const [key, chunk] of this.open) if (chunk.switchId === switchId) this.open.delete(key);
+  }
+
   sweep(now) {
     const closed = [];
     for (const [key, chunk] of this.open) {

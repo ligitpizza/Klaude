@@ -10,6 +10,17 @@ const { splitWithLabel, modelLabel } = require("../data/utils/discord_text.js");
 const { COMMANDS, buildCommandGuide, mentionsCommands } = require("../data/commands.js");
 const { vector } = require("../data/db/vector_client.js");
 const knowledge = require("../data/rag/knowledge_sync.js");
+const { ChunkBuffer } = require("../data/rag/chunker.js");
+const { createChatStore } = require("../data/rag/chat_store.js");
+const { createIndexedChannels } = require("../data/rag/channels.js");
+const { createIngest, initChatIngest, handleIndexCommand } = require("../data/rag/ingest.js");
+
+// Chat memory pieces — only built when Upstash Vector is configured.
+const chatStore = vector ? createChatStore({ vector, redis }) : null;
+const indexedChannels = vector ? createIndexedChannels({ redis }) : null;
+const chatIngest = vector
+  ? createIngest({ buffer: new ChunkBuffer(), store: chatStore, indexed: indexedChannels })
+  : null;
 
 // Built once at load — the registry is static, so there's no need to redo it per message.
 const COMMAND_GUIDE = buildCommandGuide();
@@ -672,12 +683,17 @@ client.once("ready", async () => {
   await vectorSafe("guideline sync", async () => {
     await knowledge.syncGuidelines({ vector, guidelines: await getGuidelines() });
   });
+  try {
+    await indexedChannels.load(client.guilds.cache.map(g => g.id));
+    initChatIngest(client, chatIngest);
+    console.log('Chat memory ready');
+  } catch (err) {
+    console.error('Chat memory failed to start:', err.message);
+  }
 });
 
-process.on('SIGINT', async () => {
-  console.log('Shutting down...');
-  process.exit(0);
-});
+// Shutdown (SIGTERM/SIGINT) is handled by initChatIngest, which saves open
+// chat chunks before exiting.
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
@@ -688,6 +704,17 @@ client.on("messageCreate", async (message) => {
   const msgLower = message.content.toLowerCase();
 
   //ai commands
+  // ai--index on|off|status — chat memory switch for this channel
+  if (msgLower.startsWith('ai--index')) {
+    if (!vector) {
+      return await message.reply({
+        embeds: [new EmbedBuilder().setColor("#282d2f").setTitle("Chat memory")
+          .setDescription("Chat memory isn't configured on this bot (Upstash Vector keys are missing).")],
+      });
+    }
+    return await handleIndexCommand(message, { indexed: indexedChannels, store: chatStore, ingest: chatIngest });
+  }
+
   // ai--memoclr
   if (msgLower.includes('ai--memoclr')) {
     try {
