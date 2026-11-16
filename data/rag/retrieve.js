@@ -2,7 +2,9 @@ const { COMMANDS } = require("../commands.js");
 
 // Matches below this similarity (Upstash scores are 0–1) are left out, so
 // unrelated chat or commands don't end up in the prompt. Tune here.
-const MIN_SCORE = 0.75;
+// 0.75 dropped real matches in production (a relevant command scored 0.716);
+// unrelated items score ~0.55–0.62 with text-embedding-3-small.
+const MIN_SCORE = 0.70;
 const TOP_K = 5;
 
 const good = (hits) => hits.filter(h => h.score >= MIN_SCORE);

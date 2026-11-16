@@ -29,7 +29,7 @@ const stubChatStore = (hits, { fail = false } = {}) => ({
   async search(args) { this.calls.push(args); if (fail) throw new Error("chat down"); return hits; },
 });
 
-test("MIN_SCORE is 0.75", () => assert.equal(MIN_SCORE, 0.75));
+test("MIN_SCORE is 0.70", () => assert.equal(MIN_SCORE, 0.70));
 
 test("expandCommandGroups returns every visible command in the matched groups", () => {
   const music = expandCommandGroups([cmdHit("-play", 0.9), cmdHit("-skip", 0.8)], COMMANDS);
@@ -52,7 +52,7 @@ test("a command question with no good match falls back to the full guide", async
 });
 
 test("other questions get only the top matches above MIN_SCORE", async () => {
-  const vector = stubVector({ commands: [cmdHit("-play", 0.8), cmdHit("-skip", 0.74)] });
+  const vector = stubVector({ commands: [cmdHit("-play", 0.8), cmdHit("-skip", 0.69)] });
   const ctx = await retrieveContext({ vector, chatStore: null, query: "play lofi", aboutCommands: false, guildId: "1" });
   assert.deepEqual(ctx.commands.map(c => c.cmd), ["-play"]);
 });
@@ -150,4 +150,10 @@ test("I5: with past chat present, real-time data doesn't say 'ONLY'", () => {
   assert.match(searchInstruction({ searchResults: null, aboutCommands: true, hasChats: false }), /command guide/);
   assert.match(searchInstruction({ searchResults: null, aboutCommands: false, hasChats: true }), /past conversations/i);
   assert.match(searchInstruction({ searchResults: null, aboutCommands: false, hasChats: false }), /training knowledge/);
+});
+
+test("a 0.716 command match (seen in production logs) is now used", async () => {
+  const vector = stubVector({ commands: [cmdHit("-play", 0.716)] });
+  const ctx = await retrieveContext({ vector, chatStore: null, query: "play music", aboutCommands: false, guildId: "1" });
+  assert.deepEqual(ctx.commands.map(c => c.cmd), ["-play"]);
 });
