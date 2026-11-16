@@ -96,6 +96,14 @@ function buildHelpAIEmbed() {
         value: groupLines("guide").join("\n"),
         inline: false,
       },
+      {
+        name: "🧠 Chat memory",
+        value: [
+          ...linesFor(["ai--index"]),
+          "*on/off need Manage Channels • only new messages are remembered • off deletes what was stored*",
+        ].join("\n"),
+        inline: false,
+      },
     )
     .setFooter({ text: "AI model may have outdated info past early 2025" });
 }

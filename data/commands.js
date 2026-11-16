@@ -158,11 +158,22 @@ const STARTS_WITH_HANDLED = [
 // The prefix is ignored when comparing, so "--play" suggests "-play".
 function findClosestCommands(text) {
   const first = String(text).trim().split(/\s+/)[0].toLowerCase();
+  // A bare "ai--" can only mean the AI commands.
+  if (first === "ai--") return { input: first, suggestions: [getCommand("ai--help")] };
   if (!/^(ai--|--|-)[a-z]+$/.test(first)) return null;
   if (byName.has(first)) return null;
   if (STARTS_WITH_HANDLED.some(p => first.startsWith(p))) return null;
 
   const bare = stripPrefix(first);
+  const inputPrefix = first.match(PREFIX_RE)[0];
+
+  // "ai--in" / "--he": nobody types ai-- or -- in normal chat, so a cut-off
+  // command is safe to complete. Plain "-" stays strict ("-ok", "-in" are chat).
+  if (inputPrefix !== "-") {
+    const starts = TOP_LEVEL.filter(c => !(c.hidden && c.group === "extractor"))
+      .filter(c => c.cmd.match(PREFIX_RE)?.[0] === inputPrefix && stripPrefix(c.cmd).startsWith(bare));
+    if (starts.length) return { input: first, suggestions: starts.slice(0, 3) };
+  }
   // Too short to guess from: "-x" is 1 edit from -p, -s, -q and -l.
   if (bare.length < 3) return { input: first, suggestions: [] };
 
@@ -182,7 +193,6 @@ function findClosestCommands(text) {
     }
   }
   // "--hepl" ties --help and ai--help; prefer the one with the prefix they typed.
-  const inputPrefix = first.match(PREFIX_RE)[0];
   const samePrefix = matches.filter(c => c.cmd.match(PREFIX_RE)?.[0] === inputPrefix);
   if (samePrefix.length) matches = samePrefix;
   return { input: first, suggestions: matches.slice(0, 3) };
