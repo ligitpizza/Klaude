@@ -33,6 +33,10 @@ async function retrieveContext({
     searchChat ? chatStore.search({ query, guildId, switchIds, askKey, topK: TOP_K }) : Promise.resolve([]),
   ]);
 
+  // For tuning MIN_SCORE against the live index: the best score per lookup.
+  const top = (r) => (r.status === "fulfilled" && r.value.length ? r.value[0].score.toFixed(3) : "-");
+  console.log(`Retrieval top scores — commands ${top(cmdRes)}, guidelines ${top(guideRes)}, chat ${top(chatRes)} (cut-off ${MIN_SCORE})`);
+
   let cmds = null;
   if (cmdRes.status === "fulfilled") {
     const hits = good(cmdRes.value);
