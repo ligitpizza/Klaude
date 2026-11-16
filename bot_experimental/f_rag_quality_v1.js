@@ -14,7 +14,7 @@ const { ChunkBuffer } = require("../data/rag/chunker.js");
 const { createChatStore } = require("../data/rag/chat_store.js");
 const { createIndexedChannels, allowedSources, isPublicChannel } = require("../data/rag/channels.js");
 const { historyEntry, visibleHistory } = require("../data/rag/history.js");
-const { retrieveContext, buildPromptBlocks } = require("../data/rag/retrieve.js");
+const { retrieveContext, buildPromptBlocks, searchInstruction } = require("../data/rag/retrieve.js");
 const { createIngest, initChatIngest, handleIndexCommand } = require("../data/rag/ingest.js");
 
 // Chat memory pieces — only built when Upstash Vector is configured.
@@ -1024,11 +1024,7 @@ client.on("messageCreate", async (message) => {
         ${commandsBlock
           ? `${retrievedCommands ? 'Command guide (the relevant part of the full list in --help):' : 'Command guide (every command this bot has):'}\n${commandsBlock}`
           : ''}
-        ${searchResults
-          ? `\nIMPORTANT: Base your answer ONLY on the following real-time data. Do NOT remove any URLs or links:\n\n${searchResults}`
-          : aboutCommands
-            ? '\nThis is a question about your commands. Use the command guide above.'
-            : '\nNo real-time data retrieved. Answer from your own training knowledge and be transparent if something may be outdated.'}
+        ${searchInstruction({ searchResults, aboutCommands, hasChats: Boolean(chatsBlock) })}
         ${chatsBlock ? `\n${chatsBlock}` : ''}
         ${channelContext ? `\nRecent channel conversation:\n${channelContext}` : ''}`
 

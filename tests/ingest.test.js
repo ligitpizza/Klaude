@@ -271,3 +271,16 @@ test("M6: a failing reply in ai--index never rejects", async () => {
   m.reply = async () => { throw new Error("Missing Permissions"); };
   await assert.doesNotReject(handleIndexCommand(m, deps));
 });
+
+test("I6: ai--index in a forum post controls the whole forum", async () => {
+  const deps = await setup({ indexedIds: [] });
+  const forum = channel({ id: "800", name: "help-forum", type: 15 /* GuildForum */ });
+  const post = channel({ id: "801", name: "my question", type: ChannelTypes.PublicThread, parent: forum });
+  const m = message({ content: "ai--index on", authorId: "mod", ch: post });
+  await handleIndexCommand(m, deps);
+  assert.equal(deps.indexed.isIndexed("1", "800"), true);
+  assert.match(text(m.replies[0]), /<#800>/);
+  await deps.ingest.onMessage(message({ id: "81", ch: post }));
+  await deps.ingest.flushAll();
+  assert.equal(deps.vector.get("chat", "801:81").metadata.switchId, "800");
+});

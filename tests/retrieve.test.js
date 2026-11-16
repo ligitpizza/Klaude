@@ -123,8 +123,31 @@ test("Review Focus 3: when every vector call fails, the full guide and all guide
 test("pinned guidelines always appear, once, alongside retrieved ones", () => {
   const pinned = [{ id: "a", name: "Tone", content: "be kind", pinned: true }];
   const ctx = { commands: [], guidelines: [{ id: "a", name: "Tone", content: "be kind" }, { id: "b", name: "IP", content: "mc.example.net" }], chats: [] };
-  const blocks = buildPromptBlocks(ctx, { pinned, allGuidelines: [], guide: "FULL" });
+  const allGuidelines = [...pinned, { id: "b", name: "IP", content: "mc.example.net" }];
+  const blocks = buildPromptBlocks(ctx, { pinned, allGuidelines, guide: "FULL" });
   assert.equal(blocks.guidelinesBlock, "- [Tone] be kind\n- [IP] mc.example.net");
   assert.equal(blocks.commandsBlock, "");
   assert.equal(blocks.retrievedCommands, true);
+});
+
+test("I4: retrieved guidelines that were removed or edited in Redis use Redis's version", () => {
+  const all = [{ id: "a", name: "Tone", content: "be kind (edited)" }];
+  const ctx = { commands: [], chats: [], guidelines: [
+    { id: "a", name: "Tone", content: "be kind" },          // stale content in the vector
+    { id: "gone", name: "Old", content: "removed rule" },   // ai--g -r'd, vector delete failed
+  ] };
+  const blocks = buildPromptBlocks(ctx, { pinned: [], allGuidelines: all, guide: "FULL" });
+  assert.equal(blocks.guidelinesBlock, "- [Tone] be kind (edited)");
+});
+
+test("I5: with past chat present, real-time data doesn't say 'ONLY'", () => {
+  const { searchInstruction } = require("../data/rag/retrieve.js");
+  assert.match(searchInstruction({ searchResults: "RAWG data", aboutCommands: false, hasChats: false }), /ONLY/);
+  const both = searchInstruction({ searchResults: "RAWG data", aboutCommands: false, hasChats: true });
+  assert.doesNotMatch(both, /ONLY/);
+  assert.match(both, /past conversations/i);
+  assert.match(both, /RAWG data/);
+  assert.match(searchInstruction({ searchResults: null, aboutCommands: true, hasChats: false }), /command guide/);
+  assert.match(searchInstruction({ searchResults: null, aboutCommands: false, hasChats: true }), /past conversations/i);
+  assert.match(searchInstruction({ searchResults: null, aboutCommands: false, hasChats: false }), /training knowledge/);
 });

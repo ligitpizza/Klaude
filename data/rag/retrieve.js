@@ -82,11 +82,29 @@ function buildPromptBlocks(ctx, { pinned, allGuidelines, guide }) {
   let guidelines;
   if (ctx.guidelines === null) guidelines = allGuidelines;
   else {
+    // Redis is the source of truth: a guideline removed or edited there (with
+    // a failed vector update) must not keep applying from stale vector data.
+    const live = new Map(allGuidelines.map(g => [g.id, g]));
+    const retrieved = ctx.guidelines.map(g => live.get(g.id)).filter(Boolean);
     const seen = new Set();
-    guidelines = [...pinned, ...ctx.guidelines].filter(g => !seen.has(g.id) && seen.add(g.id));
+    guidelines = [...pinned, ...retrieved].filter(g => !seen.has(g.id) && seen.add(g.id));
   }
 
   return { commandsBlock, retrievedCommands, guidelinesBlock: formatGuidelines(guidelines), chatsBlock: formatChats(ctx.chats) };
 }
 
-module.exports = { MIN_SCORE, expandCommandGroups, retrieveContext, formatCommands, formatChats, buildPromptBlocks };
+// The instruction that goes with the real-time data. With past chat in the
+// prompt, "base your answer ONLY on the real-time data" would make the model
+// ignore the server's own discussion, so it's softened.
+function searchInstruction({ searchResults, aboutCommands, hasChats }) {
+  if (searchResults) {
+    return hasChats
+      ? `\nReal-time data below. Use it and/or the past conversations, whichever answers the question. Do NOT remove any URLs or links:\n\n${searchResults}`
+      : `\nIMPORTANT: Base your answer ONLY on the following real-time data. Do NOT remove any URLs or links:\n\n${searchResults}`;
+  }
+  if (aboutCommands) return "\nThis is a question about your commands. Use the command guide above.";
+  if (hasChats) return "\nNo real-time data retrieved. If the past conversations answer the question, use them; otherwise answer from your own knowledge.";
+  return "\nNo real-time data retrieved. Answer from your own training knowledge and be transparent if something may be outdated.";
+}
+
+module.exports = { MIN_SCORE, searchInstruction, expandCommandGroups, retrieveContext, formatCommands, formatChats, buildPromptBlocks };

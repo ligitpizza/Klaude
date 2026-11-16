@@ -1,8 +1,9 @@
-const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { EmbedBuilder, PermissionFlagsBits, ChannelType } = require("discord.js");
 const { storageTarget } = require("./channels.js");
 const { usageLine } = require("../commands.js");
 
 const SWEEP_MS = 60_000;
+const FORUMS = new Set([ChannelType.GuildForum, ChannelType.GuildMedia]);
 const COMMAND_PREFIX = /^(ai--|--|-)/;
 
 // "<@42>" → "@bob" so stored chat reads naturally.
@@ -133,13 +134,16 @@ async function handleIndexCommand(message, { indexed, store, ingest }) {
   // unhandled rejection: launch.js exits the process on those.
   const reply = (x) => message.reply(x).catch(err => console.error("ai--index reply failed:", err.message));
   const sub = message.content.trim().split(/\s+/)[1]?.toLowerCase();
-  const ch = message.channel;
+  let ch = message.channel;
 
   if (!message.guild) return reply(embed("Chat memory", "Chat memory only works in servers."));
-  if (ch?.isThread?.()) {
+  // A forum has no message stream of its own, so its posts control the forum.
+  const forumPost = ch?.isThread?.() && FORUMS.has(ch.parent?.type);
+  if (forumPost) ch = ch.parent;
+  else if (ch?.isThread?.()) {
     return reply(embed("Chat memory", "Threads follow their parent channel. Run `ai--index` in the parent channel."));
   }
-  const target = storageTarget(ch);
+  const target = forumPost ? { switchId: ch.id } : storageTarget(ch);
   if (!target) return reply(embed("Chat memory", "Chat memory can't be used in this kind of channel."));
   if (!["on", "off", "status"].includes(sub)) return reply(embed("Correct Usage:", usageLine("ai--index")));
 
