@@ -6,6 +6,10 @@ const { LOADIPHLPAPI } = require("node:dns");
 const redis = require("../data/db/redis_client.js");
 const { withRetry } = require("../data/utils/retry.js");
 const { askGemini } = require("../data/utils/gemini.js");
+const { buildCommandGuide, mentionsCommands } = require("../data/commands.js");
+
+// Built once at load — the registry is static, so there's no need to redo it per message.
+const COMMAND_GUIDE = buildCommandGuide();
 
 let LOG_COUNTER = 0;
 
@@ -886,15 +890,23 @@ client.on("messageCreate", async (message) => {
     console.log(`Loaded ${conversationHistory.length} previous messages for ${userName}`);
 
     await message.channel.sendTyping();
-    const searchResults = await withRetry(() => fetchSearchResults(userInput));
+    // Questions about the bot's own commands are answered from COMMAND_GUIDE,
+    // so skip the classifier + web search (it would also tell the model to
+    // answer "ONLY" from unrelated search results).
+    const aboutCommands = mentionsCommands(userInput);
+    const searchResults = aboutCommands
+      ? null
+      : await withRetry(() => fetchSearchResults(userInput));
 
-    if (searchResults) {
+    if (aboutCommands) {
+      console.log('Command question — answering from the command guide');
+    } else if (searchResults) {
       console.log(`Search results injected (${searchResults.length} chars)`);
     } else {
       console.log('No search results — AI answering from own knowledge');
     }
 
-    const uncertaintyNote = !searchResults
+    const uncertaintyNote = !searchResults && !aboutCommands
       ? '\n- NOTE: No real-time data was retrieved. If this involves recent events, flag to the user that your answer may be outdated.' : '';
 
     const systemContent = `You are a helpful, witty, and conversational Discord bot. Respond to ${userName} naturally and clearly. 
@@ -911,9 +923,15 @@ client.on("messageCreate", async (message) => {
         - When real-time data is provided, treat it as ground truth
         - NEVER say you don't have information when real-time data has been provided — use it${uncertaintyNote}
         - NEVER reformat, shorten, or remove URLs. Always preserve markdown hyperlinks exactly as given in the real-time data. If a link is [text](url), keep it as [text](url).
+        - When asked about your commands or how to use a feature, answer ONLY from the command guide below. Quote the usage exactly in backticks. Never invent commands, flags, or aliases that aren't listed; if something isn't in the guide, say you don't have that command and suggest --help.
+
+        Command guide (every command this bot has):
+        ${COMMAND_GUIDE}
         ${searchResults
           ? `\nIMPORTANT: Base your answer ONLY on the following real-time data. Do NOT remove any URLs or links:\n\n${searchResults}`
-          : '\nNo real-time data retrieved. Answer from your own training knowledge and be transparent if something may be outdated.'}
+          : aboutCommands
+            ? '\nThis is a question about your commands. Use the command guide above.'
+            : '\nNo real-time data retrieved. Answer from your own training knowledge and be transparent if something may be outdated.'}
         ${channelContext ? `\nRecent channel conversation:\n${channelContext}` : ''}`
 
 

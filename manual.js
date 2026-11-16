@@ -1,5 +1,12 @@
 require("dotenv").config();
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
+const { GROUPS, COMMANDS, groupLines, findClosestCommands } = require("./data/commands.js");
+
+// Help lines for specific commands, in the order given.
+const linesFor = cmds => cmds
+  .map(name => COMMANDS.find(c => c.cmd === name))
+  .filter(Boolean)
+  .map(c => `\`${c.usage}\` ${c.desc}`);
 
 function initManual(client) {
 
@@ -28,82 +35,24 @@ const botMsg = () =>
 function buildHelpPages() {
   const pages = [
     {
-      title: "🤖 AI",
+      title: GROUPS.ai,
       sections: [
-        {
-          name: "🤖 AI",
-          lines: [
-            "`@wes {msg}` Chat with the AI",
-            "`ai--help` Show AI-specific help",
-          ],
-        },
-        {
-          name: "🛡️ Keyword Control",
-          lines: [
-            "`-ton` Enable keyword control",
-            "`-toff` Disable keyword control",
-            "`-tstat` Show current status",
-          ],
-        },
-        {
-          name: "🔍 Extractor",
-          lines: [
-            "`--myid` Your user ID",
-          ],
-        },
+        { name: GROUPS.ai,        lines: linesFor(["@wes", "ai--help"]) },
+        { name: GROUPS.keyword,   lines: groupLines("keyword") },
+        { name: GROUPS.extractor, lines: groupLines("extractor") },
       ],
     },
-    {
-      title: "🎵 Music",
-      sections: [
-        {
-          name: "🎵 Music",
-          lines: [
-            "`-play <song/url>` Play from YouTube, Spotify, SoundCloud",
-            "`-skip` Skip current song",
-            "`-stop` Stop and clear queue",
-            "`-pause` Pause playback",
-            "`-resume` Resume playback",
-            "`-queue` Show queue",
-            "`-nowplaying` Show current song",
-            "`-loop [off|song|queue]` Toggle loop mode",
-            "`-volume <0-100>` Set volume",
-            "`-leave` Disconnect bot from voice",
-            "`-search <query>` Search SoundCloud and pick a track",
-            "`-ask rec [song]` Recommend similar songs",
-            "`-ask desc [song]` Get info about a song",
-            "`-ask <question>` General Q&A with the bot assistant",
-          ],
-        },
-      ],
-    },
-    {
-      title: "📸 Photo Tracker",
-      sections: [
-        {
-          name: "📸 Photo Tracker",
-          lines: [
-            "`-mystat` Your photo upload stats",
-            "`-photostat @user` Stats for a specific user",
-            "`-toposter` Top photo contributors leaderboard",
-            "`-serverstat` Server-wide photo stats",
-            "`-channelstat` Current channel photo stats",
-          ],
-        },
-      ],
-    },
+    { title: GROUPS.music, sections: [{ name: GROUPS.music, lines: groupLines("music") }] },
+    { title: GROUPS.photo, sections: [{ name: GROUPS.photo, lines: groupLines("photo") }] },
   ];
 
-  const generalSection = {
-    name: "⚙️ General",
-    lines: ["`-uptime` How long the bot has been online"],
-  };
+  const generalSection = { name: GROUPS.general, lines: groupLines("general") };
 
   return pages.map((page, i) => {
     const embed = new EmbedBuilder()
       .setColor("#282d2f")
       .setTitle(`Command List — ${page.title}`)
-      .setFooter({ text: `Bot by ${getCreatorTag()} • Page ${i + 1}/${pages.length} • Use --helpai for AI-specific commands` });
+      .setFooter({ text: `Bot by ${getCreatorTag()} • Page ${i + 1}/${pages.length} • Use ai--help for AI-specific commands` });
 
     for (const section of [...page.sections, generalSection]) {
       embed.addFields({ name: section.name, value: section.lines.join("\n"), inline: false });
@@ -128,11 +77,7 @@ function buildHelpAIEmbed() {
     .addFields(
       {
         name: "💬 Chat",
-        value: [
-          "`@wes {message}` Chat directly with the AI",
-          "`ai--memoclr` Clear your AI chat memory",
-          "`ai--memostat` View your conversation stats",
-        ].join("\n"),
+        value: linesFor(["@wes", "ai--memoclr", "ai--memostat"]).join("\n"),
         inline: true,
       },
       {
@@ -147,14 +92,8 @@ function buildHelpAIEmbed() {
       // ── spacer ───────────────────────────────────────────────────────────────
       { name: "​", value: "​", inline: false },
       {
-        name: "📋 Custom guidelines",
-        value: [
-          "`ai--g ls` List all guidelines",
-          "`ai--g -s <id>` View a specific guideline",
-          "`ai--g -a <name> - <content>` Add a guideline",
-          "`ai--g -e <id> - <content>` Edit a guideline",
-          "`ai--g -r <id>` Remove a guideline",
-        ].join("\n"),
+        name: GROUPS.guide,
+        value: groupLines("guide").join("\n"),
         inline: false,
       },
     )
@@ -211,6 +150,23 @@ client.on("messageCreate", async (message) => {
 
   if (lower === "!help" || lower === "/help") {
     return message.reply(`Use **--help** to list available commands!${botMsg()}`);
+  }
+
+  // ── Typo'd commands ─────────────────────────────────────────────────────────
+  // "-serch" → "Did you mean `-search`?" with the usage line. No AI call:
+  // the command registry doubles as the list of valid commands. Stays quiet
+  // when nothing is close, so stray "-something" chatter isn't answered.
+  const typo = findClosestCommands(message.content);
+  if (typo?.suggestions.length) {
+    const options = typo.suggestions.map(c => `\`${c.cmd}\``).join(" or ");
+    const usages  = typo.suggestions.map(c => `\`${c.usage}\` ${c.desc}`).join("\n");
+    return message.reply({
+      embeds: [new EmbedBuilder()
+        .setColor("#282d2f")
+        .setTitle("Unknown command")
+        .setDescription(`\`${typo.input}\` isn't a command. Did you mean ${options}?\n\n${usages}`)
+        .setFooter({ text: "Use --help to see every command" })],
+    }).catch(err => console.error("Typo reply error:", err));
   }
 });
 

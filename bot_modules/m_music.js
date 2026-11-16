@@ -5,6 +5,7 @@ const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
 const { withTimeout } = require("../data/utils/timeout.js");
 const { askGemini } = require("../data/utils/gemini.js");
+const { usageLine } = require("../data/commands.js");
 // ffmpeg-static's bundled binary segfaults on Render when reading SoundCloud's
 // HLS (.m3u8) streams, so we use @ffmpeg-installer/ffmpeg's binary instead.
 // FFMPEG_PATH still overrides both, e.g. to point at a system-installed ffmpeg.
@@ -345,7 +346,7 @@ async function handleMusicCommand(command, args, message) {
   // ── -play / -p ────────────────────────────────────────────────────────────
   if (command === "play" || command === "p") {
     if (!voiceChannel)  return message.reply("You need to be in a voice channel!");
-    if (!args.length)   return message.reply("Please provide a song name or URL!");
+    if (!args.length)   return message.reply(`Please provide a song name or URL!\n${usageLine("-play")}`);
     try {
       await distube.play(voiceChannel, args.join(" "), {
         member: message.member, textChannel: message.channel, message,
@@ -360,7 +361,7 @@ async function handleMusicCommand(command, args, message) {
   // ── -search / -se ─────────────────────────────────────────────────────────
   if (command === "search" || command === "se") {
     if (!voiceChannel)  return message.reply("You need to be in a voice channel!");
-    if (!args.length)   return message.reply("Please provide a search query!");
+    if (!args.length)   return message.reply(`Please provide a search query!\n${usageLine("-search")}`);
 
     const query = args.join(" ");
     let results;
@@ -554,7 +555,7 @@ async function handleMusicCommand(command, args, message) {
     if (!args.length) return message.reply(`🔊 Current volume: **${queue.volume}%**`);
 
     const vol = parseInt(args[0]);
-    if (isNaN(vol) || vol < 0 || vol > 100) return message.reply("Volume must be 0–100!");
+    if (isNaN(vol) || vol < 0 || vol > 100) return message.reply(`Volume must be 0–100!\n${usageLine("-volume")}`);
     queue.setVolume(vol);
     return message.reply(`🔊 Volume set to **${vol}%**`);
   }
@@ -582,7 +583,7 @@ async function handleMusicCommand(command, args, message) {
 
   // ── -ask / -ai ─────────────────────────────────────────────────────────────
   if (command === "ask" || command === "ai") {
-    if (!args.length) return message.reply("Try `-ask rec <song>`, `-ask desc <song>`, or `-ask <question>`");
+    if (!args.length) return message.reply("Try `-ask rec [song]`, `-ask desc [song]`, or `-ask <question>`");
     if (!process.env.GOOGLE_API_KEY) return message.reply("The bot assistant isn't configured on this server.");
 
     const sub = args[0].toLowerCase();
