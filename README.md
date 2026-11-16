@@ -50,6 +50,8 @@ DISCORD_BOT_TOKEN_4=your_alt_bot_token_4 (Optional)
 # AI
 OPENROUTER_API_KEY=your_openrouter_key (Optional)
 GOOGLE_API_KEY=your_google_gemini_key (Better)
+# Optional: Gemini models to try, in order (default: a chain of free text models)
+# GEMINI_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash-lite
 
 # RAG Data APIs
 TMDB_KEY=your_tmdb_key
@@ -65,7 +67,21 @@ TAVILY_API_KEY=your_tavily_key
 # Cloud DB (f_rag_quality_v1 AI memory + m_photoloc stats)
 UPSTASH_REDIS_REST_URL=your_upstash_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_token
+
+# Optional: chat memory + retrieval (Upstash Vector). Without these the bot
+# still works: full command guide and all guidelines in every prompt.
+UPSTASH_VECTOR_REST_URL=your_upstash_vector_url
+UPSTASH_VECTOR_REST_TOKEN=your_upstash_vector_token
 ```
+
+### Chat memory setup (Upstash Vector)
+
+1. In the [Upstash console](https://console.upstash.com/), create a **Vector** index: type **Dense**, metric **Cosine**, embedding model **`openai/text-embedding-3-small`** (Upstash creates the embeddings, so no extra API key is needed).
+2. Copy its REST URL and token into `.env` (and into Render's environment) as `UPSTASH_VECTOR_REST_URL` / `UPSTASH_VECTOR_REST_TOKEN`.
+3. Restart the bot. It stores the command list and your `ai--g` guidelines in the index on startup.
+4. In each channel you want remembered, someone with **Manage Channels** runs `ai--index on`.
+
+Free tier: 10,000 queries + updates a day. Each question uses up to 3 queries; each stored conversation chunk (up to 15 messages) uses 1 update.
 
 Start the bot:
 
@@ -84,6 +100,8 @@ node launch.js
 | `ai--memoclr` | Clear your AI conversation history |
 | `ai--memostat` | View your conversation statistics |
 | `ai--g ls\|-s\|-a\|-e\|-r` | Manage server-defined AI guidelines |
+| `ai--g -p <id>` | Pin/unpin a guideline so it always applies (unpinned ones are only used when relevant) |
+| `ai--index on\|off\|status` | Turn chat memory on/off for this channel, or check it (on/off need Manage Channels) |
 | `ai--help` | AI-specific command help |
 
 ### Music Commands
@@ -251,7 +269,20 @@ Everything persistent is stored in Upstash Redis — nothing local, so state sur
 |---|---|---|
 | `hist:{userId}` | `f_rag_quality_v1` | ✅ Active |
 | `rl:{userId}` | `f_rag_quality_v1` | ✅ Active |
-| `bot:guidelines` | `f_rag_quality_v1` (`ai--g`) | ✅ Active |
+| `bot:guidelines` | `f_rag_quality_v1` (`ai--g`, with optional `pinned`) | ✅ Active |
+| `rag:indexed:{guildId}` | chat memory — channels with `ai--index on` | ✅ Active |
+| `rag:map:{channelId}` | chat memory — message id → stored chunk (for edits/deletes) | ✅ Active |
+| `rag:commands:hash` | chat memory — skips re-uploading unchanged commands | ✅ Active |
+
+Upstash **Vector** (optional) holds three namespaces: `commands`, `guidelines` and `chat` (conversation chunks from channels with `ai--index on`).
+
+### Chat memory and privacy
+
+- Nothing is stored until someone with Manage Channels runs `ai--index on` in a channel. Only messages sent after that are remembered; older messages are never imported.
+- Stored messages stay in Upstash Vector until `ai--index off`, which deletes everything stored for that channel and its threads. Edits and deletes in Discord are applied to what was stored.
+- Public threads and forum posts follow their parent channel. **Private threads are never stored.**
+- A reply can only quote past chat that everyone reading the reply could already see: memory from channels **@everyone** can view can come up anywhere, but memory from a restricted channel (e.g. `#mod-chat`) only comes up when someone asks in that same channel.
+- Past chat is given to the AI as reference only, never as instructions.
 | `photo:user:*`, `photo:server:*`, `photo:channel:*`, `photo:lb:*` | `m_photoloc` | ✅ Active |
 
 ---
@@ -286,6 +317,16 @@ A few fixes worth knowing about if something looks slow or crashes unexpectedly:
 - **Redis/fetch timeouts** (Upstash calls, Tavily/NewsAPI/TMDB/RAWG/Gemini): if any of these stalls (network hiccup, slow API), the bot now fails fast (8–15s) and shows an error instead of hanging that command indefinitely.
 - **try/catch gaps fixed** (photo tracker, `ai--g` guidelines): a failed Redis call in those paths now just logs an error instead of crashing and taking the whole bot offline.
 - **Login retry-with-backoff**: if Discord login fails on boot, it retries a few times with backoff instead of hanging forever, and exits cleanly (so Render restarts it) if all attempts fail.
+
+---
+
+## Tests
+
+```bash
+npm test
+```
+
+Uses Node's built-in test runner with in-memory fakes for Redis, Upstash Vector, Gemini and Discord, so no keys or network are needed.
 
 ---
 
