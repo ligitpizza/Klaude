@@ -4,7 +4,7 @@ const { DisTube, RepeatMode } = require("distube");
 const { SoundCloudPlugin } = require("@distube/soundcloud");
 const fetch   = require("node-fetch");
 const { withTimeout } = require("../data/utils/timeout.js");
-const { askGemini } = require("../data/utils/gemini.js");
+const { askGemini, askGeminiWithModel } = require("../data/utils/gemini.js");
 const { usageLine } = require("../data/commands.js");
 // ffmpeg-static's bundled binary segfaults on Render when reading SoundCloud's
 // HLS (.m3u8) streams, so we use @ffmpeg-installer/ffmpeg's binary instead.
@@ -192,7 +192,8 @@ async function handleNowPlayingInfo(message, song) {
         : `Track: "${song.name}" by ${artist}. No background info was found — answer from your own knowledge if you recognize it, otherwise say you don't have info on this one.`,
     },
   ];
-  const blurb = await askGemini(messages, { maxTokens: 300 });
+  const info = await askGeminiWithModel(messages, { maxTokens: 300 });
+  const blurb = info?.text;
 
   // Prefer the real source we found the background info from; fall back to
   // a YouTube search for the artist so there's always somewhere to click.
@@ -209,7 +210,8 @@ async function handleNowPlayingInfo(message, song) {
         { name: "Duration",        value: song.formattedDuration, inline: true },
         { name: "🔗 More about the artist", value: `[Open link](${artistLink})`, inline: false },
       )
-      .setThumbnail(song.thumbnail)],
+      .setThumbnail(song.thumbnail)
+      .setFooter(info ? { text: `answered by ${info.model}` } : null)],
   });
 }
 
@@ -319,8 +321,9 @@ async function handleGeneralAsk(message, question, currentSong) {
     { role: "system", content: `You're a helpful music bot assistant. Give short, casual responses. ${context}` },
     { role: "user",   content: question },
   ];
-  const answer = await askGemini(messages, { temperature: 0.8, maxTokens: 500 });
-  if (!answer) return message.reply("Bot is having issues right now!");
+  const result = await askGeminiWithModel(messages, { temperature: 0.8, maxTokens: 500 });
+  if (!result) return message.reply("Bot is having issues right now!");
+  const answer = result.text;
 
   return message.channel.send({
     embeds: [new EmbedBuilder()
@@ -330,7 +333,7 @@ async function handleGeneralAsk(message, question, currentSong) {
         { name: "Your Question", value: question },
         { name: "Answer",        value: answer   },
       )
-      .setFooter({ text: `Asked by ${message.author.username}` })],
+      .setFooter({ text: `Asked by ${message.author.username} • answered by ${result.model}` })],
   });
 }
 

@@ -5,7 +5,8 @@ const fetch = require("node-fetch");
 const { LOADIPHLPAPI } = require("node:dns");
 const redis = require("../data/db/redis_client.js");
 const { withRetry } = require("../data/utils/retry.js");
-const { askGemini } = require("../data/utils/gemini.js");
+const { askGemini, askGeminiWithModel } = require("../data/utils/gemini.js");
+const { splitWithLabel, modelLabel } = require("../data/utils/discord_text.js");
 const { buildCommandGuide, mentionsCommands } = require("../data/commands.js");
 
 // Built once at load — the registry is static, so there's no need to redo it per message.
@@ -947,7 +948,8 @@ client.on("messageCreate", async (message) => {
       }
     ];
 
-    const reply = await fetchFromAny(messages);
+    const answer = await askGeminiWithModel(messages);
+    const reply = answer?.text;
 
     if (!reply) {
       console.error("All models rate limited or failed");
@@ -968,14 +970,10 @@ client.on("messageCreate", async (message) => {
       console.error('Error saving to Redis:', dbError);
     }
 
-    if (reply.length > 2000) {
-      const chunks = [];
-      for (let i = 0; i < reply.length; i += 2000) chunks.push(reply.substring(i, i + 2000));
-      await message.reply(chunks[0]);
-      for (let i = 1; i < chunks.length; i++) await message.channel.send(chunks[i]);
-    } else {
-      await message.reply(reply);
-    }
+    // Label goes on the last piece so people can see which model answered.
+    const pieces = splitWithLabel(reply, modelLabel(answer.model));
+    await message.reply(pieces[0]);
+    for (let i = 1; i < pieces.length; i++) await message.channel.send(pieces[i]);
 
   } catch (error) {
     console.error("Error:", error.message);
