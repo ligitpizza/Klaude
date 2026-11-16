@@ -23,6 +23,7 @@
     "@google/genai": "^1.38.0",
     "@snazzah/davey": "^0.1.8",
     "@upstash/redis": "^1.38.0",
+    "@upstash/vector": "^1.2.4",
     "axios": "^1.12.2",
     "discord-api-types": "^0.32.1",
     "discord.js": "^14.26.4",
