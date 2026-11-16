@@ -71,6 +71,11 @@ class FakeVector {
   }
   async fetch(ns, ids) { this._check("fetch", ns); const s = this._space(ns); return ids.map(id => (s.has(String(id)) ? { id: String(id), metadata: s.get(String(id)).metadata, data: s.get(String(id)).data } : null)); }
   async remove(ns, ids) { if (!ids.length) return; this._check("remove", ns); const s = this._space(ns); for (const id of ids) s.delete(String(id)); }
+  async removeByFilter(ns, filter) {
+    this._check("removeByFilter", ns);
+    const s = this._space(ns);
+    for (const [id, it] of s) if (matchesFilter(it.metadata || {}, filter)) s.delete(id);
+  }
   // test helpers
   ids(ns) { return [...this._space(ns).keys()]; }
   get(ns, id) { return this._space(ns).get(String(id)) || null; }

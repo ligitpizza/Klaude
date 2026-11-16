@@ -68,6 +68,13 @@ test("remove of an empty list makes no call; otherwise deletes by ids", async ()
   assert.deepEqual(calls[0], { ns: "chat", method: "delete", args: [["a"]] });
 });
 
+test("removeByFilter deletes by metadata filter in the namespace", async () => {
+  const { StubIndex, calls } = stubIndexClass();
+  const v = createVectorClient({ url: "u", token: "t", IndexClass: StubIndex });
+  await v.removeByFilter("chat", "switchId = '100'");
+  assert.deepEqual(calls[0], { ns: "chat", method: "delete", args: [{ filter: "switchId = '100'" }] });
+});
+
 test("a call that never resolves times out", async () => {
   const { StubIndex } = stubIndexClass({ hang: true });
   const v = createVectorClient({ url: "u", token: "t", IndexClass: StubIndex, timeoutMs: 20 });

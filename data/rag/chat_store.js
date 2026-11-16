@@ -31,9 +31,11 @@ const fromMetadata = (id, md) => ({
 });
 
 function createChatStore({ vector, redis }) {
+  // Lookup first: a chunk must never be searchable without a way to find it
+  // again for edits, deletes and ai--index off.
   async function saveChunk(chunk) {
-    await vector.upsert(CHAT_NS, [toVector(chunk)]);
     await redis.hset(MAP_KEY(chunk.switchId), Object.fromEntries(chunk.messages.map(m => [m.id, chunk.id])));
+    await vector.upsert(CHAT_NS, [toVector(chunk)]);
   }
 
   // Loads the stored chunk holding this message, or null.
@@ -69,11 +71,18 @@ function createChatStore({ vector, redis }) {
   }
 
   // Removes the channel's chunks and its threads' chunks.
+  // The filter delete also catches anything the lookup hash missed.
   async function deleteChannel(switchId) {
     const ids = await chunkIds(switchId);
     await vector.remove(CHAT_NS, ids);
+    if (isId(switchId)) await vector.removeByFilter(CHAT_NS, `switchId = '${switchId}'`);
     await redis.del(MAP_KEY(switchId));
     return ids.length;
+  }
+
+  // A deleted thread: its chunks go; stale lookup entries just stop resolving.
+  async function deleteThread(threadKey) {
+    if (isId(threadKey)) await vector.removeByFilter(CHAT_NS, `channelId = '${threadKey}'`);
   }
 
   const countChunks = async (switchId) => (await chunkIds(switchId)).length;
@@ -100,7 +109,7 @@ function createChatStore({ vector, redis }) {
     }));
   }
 
-  return { saveChunk, editMessage, deleteMessage, deleteChannel, countChunks, search };
+  return { saveChunk, editMessage, deleteMessage, deleteChannel, deleteThread, countChunks, search };
 }
 
 module.exports = { createChatStore, CHAT_NS };

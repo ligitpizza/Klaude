@@ -17,11 +17,16 @@ function createIndexedChannels({ redis }) {
       }
     },
     isIndexed: (guildId, channelId) => byGuild.get(guildId)?.has(channelId) ?? false,
+    // Off takes effect in memory before the Redis write, so no message slips
+    // in during the round trip. On is recorded in Redis first.
     async set(guildId, channelId, on) {
-      if (on) await redis.sadd(INDEXED_KEY(guildId), channelId);
-      else await redis.srem(INDEXED_KEY(guildId), channelId);
-      if (on) setFor(guildId).add(channelId);
-      else setFor(guildId).delete(channelId);
+      if (on) {
+        await redis.sadd(INDEXED_KEY(guildId), channelId);
+        setFor(guildId).add(channelId);
+      } else {
+        setFor(guildId).delete(channelId);
+        await redis.srem(INDEXED_KEY(guildId), channelId);
+      }
     },
     list: (guildId) => [...(byGuild.get(guildId) || [])],
   };

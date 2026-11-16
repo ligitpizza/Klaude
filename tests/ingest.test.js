@@ -205,3 +205,69 @@ test("bare ai--index shows the usage line", async () => {
   await handleIndexCommand(m, deps);
   assert.match(text(m.replies[0]), /ai--index on\|off\|status/);
 });
+
+// ── review fixes ─────────────────────────────────────────────────────────────
+test("I1: bulk deletes (purges, ban cleanup) remove each message", async () => {
+  const { ingest, vector } = await setup();
+  await ingest.onMessage(message({ id: "11", content: "keep" }));
+  await ingest.onMessage(message({ id: "12", content: "spam one" }));
+  await ingest.onMessage(message({ id: "13", content: "spam two" }));
+  await ingest.flushAll();
+  const gone = new Map([["12", { id: "12", partial: true, channel: channel(), channelId: "100", guild: { id: "1" } }],
+                        ["13", { id: "13", partial: true, channel: channel(), channelId: "100", guild: { id: "1" } }]]);
+  await ingest.onBulkDelete(gone);
+  assert.doesNotMatch(vector.get("chat", "100:11").data, /spam/);
+});
+
+test("I1: a deleted thread's stored chat is removed", async () => {
+  const { ingest, vector } = await setup();
+  const parent = channel();
+  const thread = { ...channel({ id: "300", name: "t", type: ChannelTypes.PublicThread, parent }), guild: { id: "1" } };
+  await ingest.onMessage(message({ id: "11" }));
+  await ingest.onMessage(message({ id: "31", ch: thread }));
+  await ingest.flushAll();
+  await ingest.onMessage(message({ id: "32", ch: thread, ts: 1 })); // still open
+  await ingest.onThreadDelete(thread);
+  await ingest.flushAll();
+  assert.deepEqual(vector.ids("chat"), ["100:11"]);
+});
+
+test("I1: a deleted indexed channel is turned off and its stored chat removed", async () => {
+  const { ingest, vector, indexed } = await setup();
+  await ingest.onMessage(message({ id: "11" }));
+  await ingest.flushAll();
+  await ingest.onChannelDelete({ ...channel(), guild: { id: "1" } });
+  assert.deepEqual(vector.ids("chat"), []);
+  assert.equal(indexed.isIndexed("1", "100"), false);
+});
+
+test("I2: a message sent while ai--index off is running is never saved", async () => {
+  const deps = await setup();
+  let release;
+  const origSrem = deps.redis.srem.bind(deps.redis);
+  deps.redis.srem = (...a) => new Promise(r => { release = () => r(origSrem(...a)); });
+  const off = handleIndexCommand(message({ content: "ai--index off", authorId: "mod" }), deps);
+  await new Promise(r => setImmediate(r));
+  await deps.ingest.onMessage(message({ id: "201", ts: 0 })); // arrives mid-off
+  release();
+  await off;
+  deps.setNow(20 * MIN);
+  await deps.ingest.sweep();
+  await deps.ingest.flushAll();
+  assert.deepEqual(deps.vector.ids("chat"), []);
+});
+
+test("I2: a chunk closed after its channel was turned off is not saved", async () => {
+  const { ingest, vector, indexed } = await setup();
+  await ingest.onMessage(message({ id: "11" }));
+  await indexed.set("1", "100", false);
+  await ingest.flushAll();
+  assert.deepEqual(vector.ids("chat"), []);
+});
+
+test("M6: a failing reply in ai--index never rejects", async () => {
+  const deps = await setup();
+  const m = message({ content: "ai--index status" });
+  m.reply = async () => { throw new Error("Missing Permissions"); };
+  await assert.doesNotReject(handleIndexCommand(m, deps));
+});

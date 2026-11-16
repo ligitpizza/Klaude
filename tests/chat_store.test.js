@@ -79,6 +79,30 @@ test("edits and deletes in a thread are found through the parent's switch", asyn
   assert.doesNotMatch(vector.get("chat", "300:31").data, /keep/);
 });
 
+test("I3: deleteChannel also removes chunks the lookup hash lost", async () => {
+  const { store, vector, redis } = setup();
+  await store.saveChunk(minecraft());
+  await store.saveChunk(chunk({ key: "300", switchId: "100", lines: [["31", "eve", "thread"]] }));
+  await redis.del("rag:map:100"); // e.g. the hset timed out
+  await store.deleteChannel("100");
+  assert.deepEqual(vector.ids("chat"), []);
+});
+
+test("I1: deleteThread removes only that thread's chunks", async () => {
+  const { store, vector } = setup();
+  await store.saveChunk(minecraft());
+  await store.saveChunk(chunk({ key: "300", switchId: "100", lines: [["31", "eve", "thread"]] }));
+  await store.deleteThread("300");
+  assert.deepEqual(vector.ids("chat"), ["100:11"]);
+});
+
+test("the lookup is written before the vector, so a failed lookup write stores nothing", async () => {
+  const { store, vector, redis } = setup();
+  redis.hset = async () => { throw new Error("redis down"); };
+  await assert.rejects(store.saveChunk(minecraft()));
+  assert.deepEqual(vector.ids("chat"), []);
+});
+
 test("search with nothing allowed makes no vector call", async () => {
   const { store, vector } = setup();
   vector.calls.length = 0;

@@ -36,6 +36,8 @@ function createVectorClient({ url, token, IndexClass, timeoutMs = VECTOR_TIMEOUT
       if (!ids.length) return;
       await call("remove", () => index.namespace(ns).delete(ids));
     },
+    // Deletes every vector whose metadata matches, e.g. "switchId = '123'".
+    removeByFilter: (ns, filter) => call("removeByFilter", () => index.namespace(ns).delete({ filter })),
   };
 }
 
